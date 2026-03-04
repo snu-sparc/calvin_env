@@ -24,6 +24,8 @@ This script loads a rendered episode and replays it using the recorded actions.
 Optionally, gaussian noise can be added to the actions.
 """
 
+mode = 'rel' # 'abs', 'rel'
+reset_period = 1
 
 def noise(action, pos_std=0.01, rot_std=1):
     """
@@ -77,7 +79,7 @@ def run_env(cfg):
             # cv2.imwrite(str(save_dir / f"frame_{i:07d}_pre.png"), img0[:, :, ::-1])
 
             # 3) reset 규칙은 기존처럼 유지 (32 step마다) -> 1 step으로 바꿈
-            if (i - start) % 1 == 0:
+            if (i - start) % reset_period == 0:
                 print(f"reset {i}")
                 env.reset(scene_obs=data["scene_obs"], robot_obs=data["robot_obs"])
                 prev_info = None  # 구간 시작마다 비교 초기화(원하면 유지해도 됨)
@@ -89,21 +91,36 @@ def run_env(cfg):
             origin_robot_obs = data["robot_obs"]
             origin_scene_obs = data["scene_obs"]
 
-            # 4) rel_actions -> noise 적용 -> step
-            action = data["rel_actions"]  # shape (7,)
+            if mode == 'rel':
+                action = data["rel_actions"]  # shape (7,)
 
-            pos = action[:3]
-            orn = p.getQuaternionFromEuler(action[3:6])
-            gripper = action[6]
+                pos = action[:3]
+                orn = p.getQuaternionFromEuler(action[3:6])
+                gripper = action[6]
 
-            pos, orn, gripper = noise((pos, orn, gripper),
-                                      pos_std=10,   # TODO: 단위 m라면 10은 매우 큼(원래 의도면 유지)
-                                      rot_std=10)
+                pos, orn, gripper = noise((pos, orn, gripper),
+                                        pos_std=10,   # TODO: 단위 m라면 10은 매우 큼(원래 의도면 유지)
+                                        rot_std=10)
 
-            euler = p.getEulerFromQuaternion(orn)
-            action_noisy = np.concatenate([pos, euler, [gripper]])
+                euler = p.getEulerFromQuaternion(orn)
+                action_noisy = np.concatenate([pos, euler, [gripper]])
 
-            o, _, _, info = env.step(action_noisy)
+                o, _, _, info = env.step(action_noisy)
+
+            elif mode == 'abs':
+                action7 = data["actions"].astype(np.float32)  # (7,)
+
+                pos = action7[:3].astype(np.float32)          # (3,)
+                euler = action7[3:6].astype(np.float32)       # (3,)
+                gripper = np.array([action7[6]], dtype=np.float32)  # (1,)  <-- 중요
+
+                action_abs = (pos, euler, gripper)
+                o, _, _, info = env.step(action_abs)
+            
+            else:
+                print('Wrong mode')
+                import sys
+                sys.exit()
 
             # 5) task info 출력(기존 유지)
             print(info["scene_info"]["lights"]["led"]["logical_state"])
