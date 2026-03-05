@@ -1,7 +1,5 @@
 """
 modified from reset_env_rendered_episode.py & noisy_action_modifier.py
-
-
 """
 
 from copy import deepcopy
@@ -19,12 +17,7 @@ import pybullet as p
 from calvin_env.envs.tasks import Tasks
 from calvin_env.utils import utils
 
-"""
-This script loads a rendered episode and replays it using the recorded actions.
-Optionally, gaussian noise can be added to the actions.
-"""
-
-mode = 'rel' # 'abs', 'rel'
+mode = 'rel'  # 'abs', 'rel'
 reset_period = 1
 
 def noise(action, pos_std=0.01, rot_std=1):
@@ -40,7 +33,7 @@ def noise(action, pos_std=0.01, rot_std=1):
     return pos, orn, gripper
 
 TASK_ABCD_D_ROOT_DIR = '/data1/sparc/calvin/dataset/task_ABCD_D/training'
-DEBUG_DATASET_ROOT_DIR = '/data1/sparc/calvin/dataset/calvin_debug_dataset/training'
+DEBUG_DATASET_ROOT_DIR = '/data3/ksshin/datasets/CALVIN/calvin_debug_dataset/training'
 
 @hydra.main(config_path="../../conf", config_name="config_data_collection")
 def run_env(cfg):
@@ -53,6 +46,13 @@ def run_env(cfg):
     ann = np.load(ann_path, allow_pickle=True).item()
     indx_ranges = ann["info"]["indx"]  # [(start,end), ...]
 
+    # (추가) ridx별 task 이름 (없을 수도 있으니 안전 처리)
+    task_names = None
+    try:
+        task_names = ann["language"]["task"]
+    except Exception:
+        task_names = None
+
     tasks = hydra.utils.instantiate(cfg.tasks)
     prev_info = None
     t1 = time.time()
@@ -62,9 +62,17 @@ def run_env(cfg):
 
     for ridx, (start, end) in enumerate(indx_ranges):
         print(f"\n=== range {ridx}: {start} ~ {end} ===")
-        #save_dir = save_root / f"range_{ridx:04d}_{start:07d}_{end:07d}"
-        #save_dir.mkdir(parents=True, exist_ok=True)
         save_dir = save_root
+
+        # =========================
+        # (추가) 이동거리 로그 초기화
+        # =========================
+        step_dists = []      # 매 step 이동거리 (명령 rel_action의 xyz norm)
+        step_ids = []        # x축(구간 내 step index)
+        avg10_vals = []      # 10 step 윈도우 평균값들
+        avg10_x = []         # 그 평균값을 찍을 x 위치 (윈도우 마지막 step index 등)
+
+        local_step = 0
 
         for i in range(start, end + 1):
             file = root_dir / f"episode_{i:07d}.npz"
@@ -74,22 +82,10 @@ def run_env(cfg):
 
             data = np.load(file)
 
-            # (선택) 원본 rgb_static 저장하고 싶으면 이름 분리
-            # img0 = data["rgb_static"]
-            # cv2.imwrite(str(save_dir / f"frame_{i:07d}_pre.png"), img0[:, :, ::-1])
-
-            # 3) reset 규칙은 기존처럼 유지 (32 step마다) -> 1 step으로 바꿈
             if (i - start) % reset_period == 0:
                 print(f"reset {i}")
                 env.reset(scene_obs=data["scene_obs"], robot_obs=data["robot_obs"])
-                prev_info = None  # 구간 시작마다 비교 초기화(원하면 유지해도 됨)
-
-            origin_actions = data["actions"]
-            origin_rel_actions = data["rel_actions"]
-            origin_rgb_static = data["rgb_static"]
-            origin_rgb_gripper = data["rgb_gripper"]
-            origin_robot_obs = data["robot_obs"]
-            origin_scene_obs = data["scene_obs"]
+                prev_info = None
 
             if mode == 'rel':
                 action = data["rel_actions"]  # shape (7,)
@@ -98,37 +94,57 @@ def run_env(cfg):
                 orn = p.getQuaternionFromEuler(action[3:6])
                 gripper = action[6]
 
-                pos, orn, gripper = noise((pos, orn, gripper),
-                                        pos_std=10,   # TODO: 단위 m라면 10은 매우 큼(원래 의도면 유지)
-                                        rot_std=10)
+                pos, orn, gripper = noise(
+                    (pos, orn, gripper),
+                    pos_std=10,  # 기존 유지
+                    rot_std=10
+                )
 
                 euler = p.getEulerFromQuaternion(orn)
                 action_noisy = np.concatenate([pos, euler, [gripper]])
 
+                action_noisy = data["rel_actions"]  # shape (7,)
+
+                # =========================================
+                # (추가) "명령한 rel_action" 기반 이동거리 계산
+                # - end effector 실제 이동이 아니라 rel xyz delta norm
+                # =========================================
+                cmd_xyz = action_noisy[:3]  # env에 넣은 rel pos delta
+                step_dist = float(np.linalg.norm(cmd_xyz))
+                step_dists.append(step_dist)
+                step_ids.append(local_step)
+
+                # (추가) 10 step마다 평균 계산(비중첩 윈도우)
+                if (local_step + 1) % 10 == 0:
+                    window_mean = float(np.mean(step_dists[-10:]))
+                    avg10_vals.append(window_mean)
+                    avg10_x.append(local_step)  # 윈도우 마지막 스텝 위치에 표시
+
                 o, _, _, info = env.step(action_noisy)
 
+                local_step += 1
+
             elif mode == 'abs':
+                # 요구사항이 rel_action 기반이므로 abs 모드에서는 이동거리 계산을 하지 않음
                 action7 = data["actions"].astype(np.float32)  # (7,)
 
-                pos = action7[:3].astype(np.float32)          # (3,)
-                euler = action7[3:6].astype(np.float32)       # (3,)
-                gripper = np.array([action7[6]], dtype=np.float32)  # (1,)  <-- 중요
+                pos = action7[:3].astype(np.float32)
+                euler = action7[3:6].astype(np.float32)
+                gripper = np.array([action7[6]], dtype=np.float32)
 
                 action_abs = (pos, euler, gripper)
                 o, _, _, info = env.step(action_abs)
-            
+
             else:
                 print('Wrong mode')
                 import sys
                 sys.exit()
 
-            # 5) task info 출력(기존 유지)
             print(info["scene_info"]["lights"]["led"]["logical_state"])
             if prev_info is not None:
                 print(tasks.get_task_info(prev_info, info))
             prev_info = deepcopy(info)
 
-            # 6) step 후 관측 이미지 저장 (덮어쓰기 방지)
             img = o["rgb_obs"]["rgb_static"]
             cv2.imwrite(str(save_dir / f"frame_{i:07d}.png"), img[:, :, ::-1])
 
@@ -148,6 +164,39 @@ def run_env(cfg):
             np.savez_compressed(out_file, **out)
 
             time.sleep(0.01)
+
+        # =========================
+        # (추가) ridx 구간 끝나면 그래프 저장
+        # =========================
+        if mode == "rel" and len(step_dists) > 0:
+            overall_mean = float(np.mean(step_dists))
+
+            # task title
+            if task_names is not None and ridx < len(task_names):
+                task_title = str(task_names[ridx])
+            else:
+                task_title = f"range_{ridx:04d}"
+
+            title = f"{task_title} | mean(step_dist)={overall_mean:.6f}"
+
+            plt.figure(figsize=(12, 4))
+            plt.plot(step_ids, step_dists, linewidth=1.2, label="step distance (||rel_xyz||)")
+
+            # 10 step 평균 표시 (점/선)
+            if len(avg10_vals) > 0:
+                plt.plot(avg10_x, avg10_vals, marker="o", linewidth=1.2, label="mean distance / 10 steps")
+
+            plt.title(title)
+            plt.xlabel("step (within range)")
+            plt.ylabel("commanded distance (norm of rel xyz)")
+            plt.grid(True, alpha=0.3)
+            plt.legend()
+
+            fig_path = save_root / f"range_{ridx:04d}_{start:07d}_{end:07d}_cmd_dist.png"
+            plt.tight_layout()
+            plt.savefig(fig_path, dpi=150)
+            plt.close()
+            print(f"[saved] distance plot -> {fig_path}")
 
     print("elapsed:", time.time() - t1)
 
