@@ -1,6 +1,12 @@
 """
 modified from reset_env_rendered_episode.py & noisy_action_modifier.py
-10 step마다 command displacement / real displacement의 누적 합(sum)을 계산해서 출력 및 그래프 표시
+
+기존 기능:
+- 10 step마다 command displacement / real displacement의 누적 합(sum)을 계산해서 출력 및 그래프 표시
+
+추가 기능:
+- 10 step마다 첫 step과 마지막 step 사이의 displacement도 계산해서 출력 및 그래프 표시
+  예) 0~9, 10~19, 20~29 ...
 """
 
 from copy import deepcopy
@@ -25,7 +31,9 @@ noise_period = 10  # None, int
 dist_measure_period = 10  # None, int
 target_dataset_root_dir = "/data3/ksshin/datasets/CALVIN/calvin_debug_dataset/training"
 
-action_from = 'eval' # 'dataset', 'eval'
+action_from = 'eval'  # 'dataset', 'eval'
+NUM_SEQUENCES = 10
+
 
 def noise(action, pos_std=0.01, rot_std=1):
     """
@@ -61,7 +69,7 @@ def run_env(cfg):
         f"env_reset_period({env_reset_period})_"
         f"add_noise({add_noise})_"
         f"noise_period({noise_period})_"
-        f"dist_measure_period({dist_measure_period})_SUM]"
+        f"dist_measure_period({dist_measure_period})_SUM_AND_ENDPOINT]"
     )
     save_root.mkdir(parents=True, exist_ok=True)
 
@@ -75,11 +83,21 @@ def run_env(cfg):
         cmd_step_dists = []
         real_step_dists = []
 
+        # step별 xyz 저장 (endpoint displacement 계산용)
+        cmd_step_xyzs = []
+        real_step_xyzs = []
+
         # dist_measure_period마다 계산된 "sum" 저장
         cmd_period_sums = []
         cmd_period_x = []
         real_period_sums = []
         real_period_x = []
+
+        # dist_measure_period마다 계산된 "첫 step ~ 마지막 step displacement" 저장
+        cmd_period_endpoint_dists = []
+        cmd_period_endpoint_x = []
+        real_period_endpoint_dists = []
+        real_period_endpoint_x = []
 
         local_step = 0
         prev_tcp_pos = None
@@ -136,6 +154,7 @@ def run_env(cfg):
             cmd_xyz = np.asarray(action[:3], dtype=np.float32)
             cmd_dist = float(np.linalg.norm(cmd_xyz))
             cmd_step_dists.append(cmd_dist)
+            cmd_step_xyzs.append(cmd_xyz.copy())
 
             # env step
             o, _, _, info = env.step(action)
@@ -144,6 +163,8 @@ def run_env(cfg):
             # real displacement (step dist)
             # -------------------------
             curr_tcp_pos = np.asarray(o["robot_obs"][:3], dtype=np.float32)
+            real_step_xyzs.append(curr_tcp_pos.copy())
+
             if prev_tcp_pos is None:
                 real_dist = 0.0
             else:
@@ -154,7 +175,7 @@ def run_env(cfg):
             step_ids.append(local_step)
 
             # -------------------------
-            # dist_measure_period마다 "sum" 계산/출력
+            # dist_measure_period마다 "sum" + "endpoint displacement" 계산/출력
             # -------------------------
             if dist_measure_period is not None and (local_step + 1) % dist_measure_period == 0:
                 cmd_window = cmd_step_dists[-dist_measure_period:]
@@ -169,11 +190,29 @@ def run_env(cfg):
                 real_period_sums.append(real_sum)
                 real_period_x.append(local_step)
 
+                start_idx = local_step - dist_measure_period + 1
+                end_idx = local_step
+
+                cmd_endpoint_dist = float(
+                    np.linalg.norm(cmd_step_xyzs[end_idx] - cmd_step_xyzs[start_idx])
+                )
+                real_endpoint_dist = float(
+                    np.linalg.norm(real_step_xyzs[end_idx] - real_step_xyzs[start_idx])
+                )
+
+                cmd_period_endpoint_dists.append(cmd_endpoint_dist)
+                cmd_period_endpoint_x.append(local_step)
+
+                real_period_endpoint_dists.append(real_endpoint_dist)
+                real_period_endpoint_x.append(local_step)
+
                 print(
                     f"[range {ridx:04d}] "
-                    f"step {local_step - dist_measure_period + 1:04d} ~ {local_step:04d} | "
+                    f"step {start_idx:04d} ~ {end_idx:04d} | "
                     f"CMD sum={cmd_sum:.6f} | "
-                    f"REAL sum={real_sum:.6f}"
+                    f"REAL sum={real_sum:.6f} | "
+                    f"CMD endpoint={cmd_endpoint_dist:.6f} | "
+                    f"REAL endpoint={real_endpoint_dist:.6f}"
                 )
 
             local_step += 1
@@ -220,7 +259,7 @@ def run_env(cfg):
 
             plt.figure(figsize=(12, 4))
 
-            # step dist(참고용으로 유지). 원치 않으면 이 두 plot 줄 삭제하면 됨.
+            # step dist(참고용으로 유지)
             # plt.plot(
             #     step_ids,
             #     cmd_step_dists,
@@ -238,7 +277,7 @@ def run_env(cfg):
                 label="REAL step dist = ||tcp(t)-tcp(t-1)|| (per-step)",
             )
 
-            # ✅ 10-step sum
+            # 기존 10-step sum 유지
             # if len(cmd_period_sums) > 0:
             #     plt.plot(
             #         cmd_period_x,
@@ -258,9 +297,29 @@ def run_env(cfg):
                     label=f"REAL sum / {dist_measure_period} steps",
                 )
 
+            # 추가: 10-step endpoint displacement
+            # if len(cmd_period_endpoint_dists) > 0:
+            #     plt.plot(
+            #         cmd_period_endpoint_x,
+            #         cmd_period_endpoint_dists,
+            #         marker="s",
+            #         linewidth=1.5,
+            #         color="brown",
+            #         label=f"CMD endpoint dist / {dist_measure_period} steps",
+            #     )
+            if len(real_period_endpoint_dists) > 0:
+                plt.plot(
+                    real_period_endpoint_x,
+                    real_period_endpoint_dists,
+                    marker="s",
+                    linewidth=1.5,
+                    color="purple",
+                    label=f"REAL endpoint dist / {dist_measure_period} steps",
+                )
+
             plt.title(title)
             plt.xlabel("step (within range)")
-            plt.ylabel("distance sum (m) over window")
+            plt.ylabel("distance (m)")
             plt.grid(True, alpha=0.3)
             plt.legend()
 
@@ -278,35 +337,40 @@ def replay_eval():
     from omegaconf import OmegaConf
     import json
     import glob
+
     env = get_env(Path(os.environ['ORIGINAL_CALVIN_ABCD_D']) / "validation", show_gui=False)
     conf_dir = Path(os.environ['CONF_DIR']) / "conf"
     task_cfg = OmegaConf.load(
         conf_dir / "callbacks/rollout/tasks/new_playtable_tasks.yaml"
     )
     task_oracle = hydra.utils.instantiate(task_cfg)
-    save_dir = './'
+
+    save_dir = "./replay_frames_eval/"
+    os.makedirs(save_dir, exist_ok=True)
     log_root = "/home/ksshin/projects/sparc/UD-VLA_old_with_data/logs/calvin_exp_main/univla_calvin_abcd_video_i2ia_dis/eval_20260214_1616/log"
 
-    with open("/home/ksshin/projects/sparc/UD-VLA/reference/RoboVLMs/configs/data/calvin/eval_sequences.json", "r") as f:
+    with open(
+        "/home/ksshin/projects/sparc/UD-VLA/reference/RoboVLMs/configs/data/calvin/eval_sequences.json",
+        "r",
+    ) as f:
         eval_sequences = json.load(f)
-    eval_sequences = eval_sequences[:100]
+    eval_sequences = eval_sequences[:NUM_SEQUENCES]
 
-    # 각 eval_sequence의 5개 subtask 묶음만 따로 보관
-    subtask_list = [item[1] for item in eval_sequences]  # length: 100, each length: 5
+    # 각 eval_sequence의 5개 subtask 묶음
+    subtask_list = [item[1] for item in eval_sequences]
 
-    # 2) 로그 폴더 순회하면서 action_pred들을 하나의 리스트로 모으기
-    #    필요하면 sequence별로도 같이 보관
-    all_actions = []          # 모든 sequence의 모든 7-dim action을 한 리스트에 flat하게 저장
-    actions_per_sequence = [] # sequence별 action 리스트
-    success_counts = []       # 각 sequence의 y(success_count)
+    # sequence별 action prediction 로드
+    actions_per_sequence = []
+    success_counts = []
 
-    for x in range(100):
-        # x_y 형식 폴더 찾기 (예: 0_5, 1_3 ...)
+    for x in range(NUM_SEQUENCES):
         candidates = glob.glob(os.path.join(log_root, f"{x}_*"))
         candidates = [p for p in candidates if os.path.isdir(p)]
 
         if len(candidates) != 1:
-            raise ValueError(f"Expected exactly one folder for sequence {x}, but got: {candidates}")
+            raise ValueError(
+                f"Expected exactly one folder for sequence {x}, but got: {candidates}"
+            )
 
         xy_dir = candidates[0]
         folder_name = os.path.basename(xy_dir)
@@ -318,24 +382,37 @@ def replay_eval():
 
         seq_actions = []
         for npy_file in npy_files:
-            arr = np.load(npy_file)   # expected shape: (10, 7)
-            seq_actions.extend(arr.tolist())   # 10개의 7-dim action 추가
+            arr = np.load(npy_file)  # expected shape: (10, 7)
+            seq_actions.extend(arr.tolist())
 
         actions_per_sequence.append(seq_actions)
-        all_actions.extend(seq_actions)
 
-    # 예시:
-    # subtask_list[x]         -> x번째 eval_sequence의 5개 subtask
-    # actions_per_sequence[x] -> x번째 eval_sequence의 모든 7-dim action 리스트
-    # success_counts[x]       -> x번째 eval_sequence의 success_count(y)
-    # all_actions             -> 전체 sequence의 action을 flat하게 합친 리스트
+    # 길이 sanity check
+    if len(actions_per_sequence) != len(eval_sequences):
+        raise ValueError(
+            f"Length mismatch: len(actions_per_sequence)={len(actions_per_sequence)}, "
+            f"len(eval_sequences)={len(eval_sequences)}"
+        )
 
-    for initial_state, eval_sequence in eval_sequences:
+    # -------------------------
+    # 1:1 매칭 replay
+    # eval_sequences[i] <-> actions_per_sequence[i]
+    # -------------------------
+    for eval_idx, (initial_state, eval_sequence) in enumerate(eval_sequences):
+        actions = actions_per_sequence[eval_idx]
+        task_names = subtask_list[eval_idx]
+        success_count = success_counts[eval_idx]
+
+        # sequence별 독립 측정 버퍼
         step_ids = []
 
         # step별 거리 저장
         cmd_step_dists = []
         real_step_dists = []
+
+        # step별 xyz 저장 (endpoint displacement 계산용)
+        cmd_step_xyzs = []
+        real_step_xyzs = []
 
         # dist_measure_period마다 계산된 "sum" 저장
         cmd_period_sums = []
@@ -343,96 +420,164 @@ def replay_eval():
         real_period_sums = []
         real_period_x = []
 
+        # dist_measure_period마다 계산된 "첫 step ~ 마지막 step displacement" 저장
+        cmd_period_endpoint_dists = []
+        cmd_period_endpoint_x = []
+        real_period_endpoint_dists = []
+        real_period_endpoint_x = []
+
         local_step = 0
         prev_tcp_pos = None
+        prev_info = None
 
+        # 해당 eval_idx의 initial_state로 reset
         robot_obs, scene_obs = get_env_state_for_initial_condition(initial_state)
         env.reset(robot_obs=robot_obs, scene_obs=scene_obs)
 
-        prev_info = None
-        prev_tcp_pos = None
+        print(f"\n=== eval sequence {eval_idx:03d} ===")
+        print(f"subtasks: {task_names}")
+        print(f"success_count: {success_count}")
+        print(f"num_actions: {len(actions)}")
 
-        for seq_i, actions in enumerate(actions_per_sequence):
-            local_step = 0
-            for action in actions:
-                cmd_xyz = np.asarray(action[:3], dtype=np.float32)
-                cmd_dist = float(np.linalg.norm(cmd_xyz))
-                cmd_step_dists.append(cmd_dist)
+        for action in actions:
+            action = np.asarray(action, dtype=np.float32)
 
-                o, _, _, info = env.step(action)
+            # -------------------------
+            # command displacement (per-step)
+            # -------------------------
+            cmd_xyz = np.asarray(action[:3], dtype=np.float32)
+            cmd_dist = float(np.linalg.norm(cmd_xyz))
+            cmd_step_dists.append(cmd_dist)
+            cmd_step_xyzs.append(cmd_xyz.copy())
 
-                curr_tcp_pos = np.asarray(o["robot_obs"][:3], dtype=np.float32)
-                if prev_tcp_pos is None:
-                    real_dist = 0.0
-                else:
-                    real_dist = float(np.linalg.norm(curr_tcp_pos - prev_tcp_pos))
-                prev_tcp_pos = curr_tcp_pos
-                real_step_dists.append(real_dist)
+            # env step
+            o, _, _, info = env.step(action)
 
-                step_ids.append(local_step)
+            # -------------------------
+            # real displacement (per-step)
+            # -------------------------
+            curr_tcp_pos = np.asarray(o["robot_obs"][:3], dtype=np.float32)
+            real_step_xyzs.append(curr_tcp_pos.copy())
 
-                if dist_measure_period is not None and (local_step + 1) % dist_measure_period == 0:
-                    cmd_window = cmd_step_dists[-dist_measure_period:]
-                    real_window = real_step_dists[-dist_measure_period:]
+            if prev_tcp_pos is None:
+                real_dist = 0.0
+            else:
+                real_dist = float(np.linalg.norm(curr_tcp_pos - prev_tcp_pos))
 
-                    cmd_sum = float(np.sum(cmd_window))
-                    real_sum = float(np.sum(real_window))
+            prev_tcp_pos = curr_tcp_pos
+            real_step_dists.append(real_dist)
 
-                    cmd_period_sums.append(cmd_sum)
-                    cmd_period_x.append(local_step)
+            step_ids.append(local_step)
 
-                    real_period_sums.append(real_sum)
-                    real_period_x.append(local_step)
+            # -------------------------
+            # dist_measure_period마다
+            # 1) sum
+            # 2) endpoint displacement
+            # -------------------------
+            if dist_measure_period is not None and (local_step + 1) % dist_measure_period == 0:
+                cmd_window = cmd_step_dists[-dist_measure_period:]
+                real_window = real_step_dists[-dist_measure_period:]
 
-                    print(
-                        f"step {local_step - dist_measure_period + 1:04d} ~ {local_step:04d} | "
-                        f"CMD sum={cmd_sum:.6f} | "
-                        f"REAL sum={real_sum:.6f}"
-                    )
+                cmd_sum = float(np.sum(cmd_window))
+                real_sum = float(np.sum(real_window))
 
+                cmd_period_sums.append(cmd_sum)
+                cmd_period_x.append(local_step)
 
-                img = o["rgb_obs"]["rgb_static"]
-                cv2.imwrite(str(save_dir + f"frame_{local_step:07d}.png"), img[:, :, ::-1])
-                
-                local_step += 1
-                time.sleep(0.01)
+                real_period_sums.append(real_sum)
+                real_period_x.append(local_step)
 
-            task_names = subtask_list
+                start_idx = local_step - dist_measure_period + 1
+                end_idx = local_step
 
-            title_parts = [task_names]
-
-            plt.figure(figsize=(12, 4))
-            plt.plot(
-                step_ids,
-                real_step_dists,
-                linewidth=1.0,
-                color="green",
-                alpha=0.4,
-                label="REAL step dist = ||tcp(t)-tcp(t-1)|| (per-step)",
-            )
-            if len(real_period_sums) > 0:
-                plt.plot(
-                    real_period_x,
-                    real_period_sums,
-                    marker="o",
-                    linewidth=1.5,
-                    color="red",
-                    label=f"REAL sum / {dist_measure_period} steps",
+                cmd_endpoint_dist = float(
+                    np.linalg.norm(cmd_step_xyzs[end_idx] - cmd_step_xyzs[start_idx])
+                )
+                real_endpoint_dist = float(
+                    np.linalg.norm(real_step_xyzs[end_idx] - real_step_xyzs[start_idx])
                 )
 
-            plt.title(title_parts)
-            plt.xlabel("step (within range)")
-            plt.ylabel("distance sum (m) over window")
-            plt.grid(True, alpha=0.3)
-            plt.legend()
+                cmd_period_endpoint_dists.append(cmd_endpoint_dist)
+                cmd_period_endpoint_x.append(local_step)
 
-            fig_path = save_dir + f"{seq_i:0000d}.png"
-            plt.tight_layout()
-            plt.savefig(fig_path, dpi=150)
-            plt.close()
-            print(f"[saved] distance plot -> {fig_path}")
+                real_period_endpoint_dists.append(real_endpoint_dist)
+                real_period_endpoint_x.append(local_step)
 
-            breakpoint()
+                print(
+                    f"[eval {eval_idx:03d}] "
+                    f"step {start_idx:04d} ~ {end_idx:04d} | "
+                    f"CMD sum={cmd_sum:.6f} | "
+                    f"REAL sum={real_sum:.6f} | "
+                    f"CMD endpoint={cmd_endpoint_dist:.6f} | "
+                    f"REAL endpoint={real_endpoint_dist:.6f}"
+                )
+
+            # 프레임 저장
+            img = o["rgb_obs"]["rgb_static"]
+            cv2.imwrite(
+                os.path.join(save_dir, f"eval_{eval_idx:03d}_frame_{local_step:07d}.png"),
+                img[:, :, ::-1],
+            )
+
+            prev_info = deepcopy(info)
+            local_step += 1
+            time.sleep(0.01)
+
+        # -------------------------
+        # sequence별 그래프 저장
+        # -------------------------
+        title_parts = [
+            f"eval_idx={eval_idx:03d}",
+            f"success={success_count}",
+            f"subtasks={task_names}",
+        ]
+        if len(cmd_step_dists) > 0:
+            title_parts.append(f"cmd_step_mean={float(np.mean(cmd_step_dists)):.6f}")
+        if len(real_step_dists) > 0:
+            title_parts.append(f"real_step_mean={float(np.mean(real_step_dists)):.6f}")
+
+        plt.figure(figsize=(12, 4))
+
+        plt.plot(
+            step_ids,
+            real_step_dists,
+            linewidth=1.0,
+            color="green",
+            alpha=0.4,
+            label="REAL step dist = ||tcp(t)-tcp(t-1)|| (per-step)",
+        )
+
+        if len(real_period_sums) > 0:
+            plt.plot(
+                real_period_x,
+                real_period_sums,
+                marker="o",
+                linewidth=1.5,
+                color="red",
+                label=f"REAL sum / {dist_measure_period} steps",
+            )
+
+        if len(real_period_endpoint_dists) > 0:
+            plt.plot(
+                real_period_endpoint_x,
+                real_period_endpoint_dists,
+                marker="s",
+                linewidth=1.5,
+                color="purple",
+                label=f"REAL endpoint dist / {dist_measure_period} steps",
+            )
+
+        plt.title(" \n ".join(title_parts))
+        plt.xlabel("step (within sequence)")
+        plt.ylabel("distance (m)")
+        plt.grid(True, alpha=0.3)
+        plt.legend()
+
+        fig_path = os.path.join(save_dir, f"distance_eval_{eval_idx:03d}.png")
+        plt.tight_layout()
+        plt.savefig(fig_path, dpi=150)
+        plt.close()
+        print(f"[saved] distance plot -> {fig_path}")
 
 if __name__ == "__main__":
     start_time = time.time()
