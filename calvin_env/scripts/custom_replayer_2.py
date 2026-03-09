@@ -347,7 +347,9 @@ def replay_eval():
 
     save_dir = "./replay_frames_eval/"
     os.makedirs(save_dir, exist_ok=True)
-    log_root = "/home/ksshin/projects/sparc/UD-VLA_old_with_data/logs/calvin_exp_main/univla_calvin_abcd_video_i2ia_dis/eval_20260214_1616/log"
+    #log_root = "/home/ksshin/projects/sparc/UD-VLA_old_with_data/logs/calvin_exp_main/univla_calvin_abcd_video_i2ia_dis/eval_20260214_1616/log" #baseline
+    #log_root = "/home/ksshin/projects/sparc/UD-VLA_old_with_data/logs/calvin_exp_main/univla_calvin_abcd_video_i2ia_dis/eval_20260217_0035/log" #obj 1 (blue->cyan)
+    log_root = "/home/ksshin/projects/sparc/UD-VLA_old_with_data/logs/calvin_exp_main/univla_calvin_abcd_video_i2ia_dis/eval_20260215_2128/log" #env
 
     with open(
         "/home/ksshin/projects/sparc/UD-VLA/reference/RoboVLMs/configs/data/calvin/eval_sequences.json",
