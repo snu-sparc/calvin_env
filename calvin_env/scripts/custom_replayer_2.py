@@ -224,6 +224,8 @@ def run_env(cfg):
 
             img = o["rgb_obs"]["rgb_static"]
             cv2.imwrite(str(save_dir / f"frame_{i:07d}.png"), img[:, :, ::-1])
+            gripper_img = o["rgb_obs"]["rgb_gripper"]
+            cv2.imwrite(str(save_dir / f"gripper_frame_{i:07d}.png"), gripper_img[:, :, ::-1])
 
             out = {
                 "rgb_static": data["rgb_static"],
