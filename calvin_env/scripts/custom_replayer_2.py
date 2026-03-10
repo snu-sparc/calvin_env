@@ -31,7 +31,7 @@ noise_period = 10  # None, int
 dist_measure_period = 10  # None, int
 target_dataset_root_dir = "/data3/ksshin/datasets/CALVIN/calvin_debug_dataset/training"
 
-action_from = 'eval'  # 'dataset', 'eval'
+action_from = 'dataset'  # 'dataset', 'eval'
 NUM_SEQUENCES = 10
 
 

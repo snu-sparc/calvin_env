@@ -26,8 +26,8 @@
         <mesh
           filename="../meshes/base_link.obj" />
       </geometry>
-      <material name="white">
-       <color rgba="1 1 1 1"/>
+      <material name="light_blue"> <!-- #virtualkss origin: white -->
+       <color rgba="0 0.69 0.94 1"/> <!-- #virtualkss origin: 1 1 1 1 -->
      </material>
     </visual>
     <collision concave="yes">
@@ -180,8 +180,8 @@
         <mesh
           filename="../meshes/slide_link.obj" />
       </geometry>
-      <material name="white">
-       <color rgba="1 1 1 1"/>
+      <material name="light_blue"> <!-- #virtualkss origin: white -->
+       <color rgba="0 0.69 0.94 1"/> <!-- #virtualkss origin: 1 1 1 1 -->
      </material>
     </visual>
     <collision>
@@ -236,8 +236,8 @@
         <mesh
           filename="../meshes/drawer_link.obj" />
       </geometry>
-      <material name="white">
-       <color rgba="1 1 1 1"/>
+      <material name="light_blue"> <!-- #virtualkss origin: white -->
+       <color rgba="0 0.69 0.94 1"/> <!-- #virtualkss origin: 1 1 1 1 -->
      </material>
     </visual>
     <collision>
@@ -403,8 +403,8 @@
         <mesh
           filename="../meshes/plank_link.obj" />
       </geometry>
-      <material name="white">
-       <color rgba="1 1 1 1"/>
+      <material name="light_blue"> <!-- #virtualkss origin: white -->
+       <color rgba="0 0.69 0.94 1"/> <!-- #virtualkss origin: 1 1 1 1 -->
      </material>
     </visual>
     <collision>
