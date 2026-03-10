@@ -29,7 +29,7 @@ env_reset_period = None  # None, int
 add_noise = False  # True, False. yet only rel_action modes.
 noise_period = 10  # None, int
 dist_measure_period = 10  # None, int
-target_dataset_root_dir = "/data3/ksshin/datasets/CALVIN/calvin_debug_dataset/training"
+target_dataset_root_dir = "/data1/sparc/calvin/dataset/calvin_debug_dataset/training"
 
 action_from = 'dataset'  # 'dataset', 'eval'
 NUM_SEQUENCES = 10
