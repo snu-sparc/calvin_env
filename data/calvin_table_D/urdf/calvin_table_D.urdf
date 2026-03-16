@@ -26,8 +26,8 @@
         <mesh
           filename="../meshes/base_link.obj" />
       </geometry>
-      <material name="light_blue"> <!-- #virtualkss origin: white -->
-       <color rgba="0 0.69 0.94 1"/> <!-- #virtualkss origin: 1 1 1 1 -->
+      <material name="white"> <!-- #virtualkss origin: white -->
+       <color rgba="1 1 1 1"/> <!-- #virtualkss origin: 1 1 1 1 -->
      </material>
     </visual>
     <collision concave="yes">
@@ -123,9 +123,13 @@
           filename="../meshes/switch_link.obj" />
       </geometry>
       <material
+        name="light_blue">
+        <color
+          rgba="0 0.69 0.94 1" />
+      <!-- <material
         name="gray">
         <color
-          rgba="0.4 0.4 0.4 1" />
+          rgba="0.4 0.4 0.4 1" /> -->
       </material>
     </visual>
     <collision>
@@ -180,8 +184,8 @@
         <mesh
           filename="../meshes/slide_link.obj" />
       </geometry>
-      <material name="light_blue"> <!-- #virtualkss origin: white -->
-       <color rgba="0 0.69 0.94 1"/> <!-- #virtualkss origin: 1 1 1 1 -->
+      <material name="white"> <!-- #virtualkss origin: white -->
+       <color rgba="1 1 1 1"/> <!-- #virtualkss origin: 1 1 1 1 -->
      </material>
     </visual>
     <collision>
@@ -236,8 +240,8 @@
         <mesh
           filename="../meshes/drawer_link.obj" />
       </geometry>
-      <material name="light_blue"> <!-- #virtualkss origin: white -->
-       <color rgba="0 0.69 0.94 1"/> <!-- #virtualkss origin: 1 1 1 1 -->
+      <material name="white"> <!-- #virtualkss origin: white -->
+       <color rgba="1 1 1 1"/> <!-- #virtualkss origin: 1 1 1 1 -->
      </material>
     </visual>
     <collision>
@@ -403,8 +407,8 @@
         <mesh
           filename="../meshes/plank_link.obj" />
       </geometry>
-      <material name="light_blue"> <!-- #virtualkss origin: white -->
-       <color rgba="0 0.69 0.94 1"/> <!-- #virtualkss origin: 1 1 1 1 -->
+      <material name="white"> <!-- #virtualkss origin: white -->
+       <color rgba="1 1 1 1"/> <!-- #virtualkss origin: 1 1 1 1 -->
      </material>
     </visual>
     <collision>

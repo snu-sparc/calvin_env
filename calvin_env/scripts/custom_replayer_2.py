@@ -26,7 +26,7 @@ np.float = float
 
 replay_action_type = "rel"  # 'abs', 'rel'
 env_reset_period = None  # None, int
-add_noise = False  # True, False. yet only rel_action modes.
+add_noise = True  # True, False. yet only rel_action modes.
 noise_period = 10  # None, int
 dist_measure_period = 10  # None, int
 target_dataset_root_dir = "/data3/ksshin/datasets/CALVIN/calvin_debug_dataset/training"
@@ -236,6 +236,7 @@ def run_env(cfg):
                 "scene_obs": data["scene_obs"],
                 "rgb_static_noisy": o["rgb_obs"]["rgb_static"],
                 "rgb_gripper_noisy": o["rgb_obs"]["rgb_gripper"],
+                'robot_obs_xyz': o["robot_obs"][:3]
             }
 
             out_file = root_dir / f"episode_{i:07d}_noisy_action_image_added.npz"
