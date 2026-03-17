@@ -26,8 +26,10 @@
         <mesh
           filename="../meshes/base_link.obj" />
       </geometry>
-      <material name="white"> <!-- #virtualkss origin: white -->
-       <color rgba="1 1 1 1"/> <!-- #virtualkss origin: 1 1 1 1 -->
+      <material name="light_blue">
+       <color rgba="0 0.69 0.94 1"/>
+      <!-- <material name="white">
+       <color rgba="1 1 1 1"/> -->
      </material>
     </visual>
     <collision concave="yes">
@@ -122,14 +124,14 @@
         <mesh
           filename="../meshes/switch_link.obj" />
       </geometry>
-      <material
+      <!-- virtualkss <material
         name="light_blue">
         <color
-          rgba="0 0.69 0.94 1" />
-      <!-- <material
+          rgba="0 0.69 0.94 1" /> -->
+      <material
         name="gray">
         <color
-          rgba="0.4 0.4 0.4 1" /> -->
+          rgba="0.4 0.4 0.4 1" />
       </material>
     </visual>
     <collision>
@@ -184,8 +186,10 @@
         <mesh
           filename="../meshes/slide_link.obj" />
       </geometry>
-      <material name="white"> <!-- #virtualkss origin: white -->
-       <color rgba="1 1 1 1"/> <!-- #virtualkss origin: 1 1 1 1 -->
+      <material name="light_blue">
+       <color rgba="0 0.69 0.94 1"/>
+      <!-- <material name="white">
+       <color rgba="1 1 1 1"/> -->
      </material>
     </visual>
     <collision>
@@ -240,8 +244,10 @@
         <mesh
           filename="../meshes/drawer_link.obj" />
       </geometry>
-      <material name="white"> <!-- #virtualkss origin: white -->
-       <color rgba="1 1 1 1"/> <!-- #virtualkss origin: 1 1 1 1 -->
+      <material name="light_blue">
+       <color rgba="0 0.69 0.94 1"/>
+      <!-- <material name="white">
+       <color rgba="1 1 1 1"/> -->
      </material>
     </visual>
     <collision>
@@ -407,8 +413,10 @@
         <mesh
           filename="../meshes/plank_link.obj" />
       </geometry>
-      <material name="white"> <!-- #virtualkss origin: white -->
-       <color rgba="1 1 1 1"/> <!-- #virtualkss origin: 1 1 1 1 -->
+      <material name="light_blue">
+       <color rgba="0 0.69 0.94 1"/>
+      <!-- <material name="white">
+       <color rgba="1 1 1 1"/> -->
      </material>
     </visual>
     <collision>
