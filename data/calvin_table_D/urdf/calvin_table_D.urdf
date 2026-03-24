@@ -26,8 +26,6 @@
         <mesh
           filename="../meshes/base_link.obj" />
       </geometry>
-      <!-- <material name="light_blue">
-       <color rgba="0 0.69 0.94 1"/> -->
       <material name="white">
        <color rgba="1 1 1 1"/>
      </material>
@@ -124,10 +122,6 @@
         <mesh
           filename="../meshes/switch_link.obj" />
       </geometry>
-      <!-- virtualkss <material
-        name="light_blue">
-        <color
-          rgba="0 0.69 0.94 1" /> -->
       <material
         name="gray">
         <color
@@ -186,8 +180,6 @@
         <mesh
           filename="../meshes/slide_link.obj" />
       </geometry>
-      <!-- <material name="light_blue">
-       <color rgba="0 0.69 0.94 1"/> -->
       <material name="white">
        <color rgba="1 1 1 1"/>
      </material>
@@ -244,8 +236,6 @@
         <mesh
           filename="../meshes/drawer_link.obj" />
       </geometry>
-      <!-- <material name="light_blue">
-       <color rgba="0 0.69 0.94 1"/> -->
       <material name="white">
        <color rgba="1 1 1 1"/>
      </material>
@@ -413,8 +403,6 @@
         <mesh
           filename="../meshes/plank_link.obj" />
       </geometry>
-      <!-- <material name="light_blue">
-       <color rgba="0 0.69 0.94 1"/> -->
       <material name="white">
        <color rgba="1 1 1 1"/>
      </material>
