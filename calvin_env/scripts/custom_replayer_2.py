@@ -26,7 +26,7 @@ np.float = float
 
 replay_action_type = "rel"  # 'abs', 'rel'
 env_reset_period = None  # None, int
-add_noise = True  # True, False. yet only rel_action modes.
+add_noise = False  # True, False. yet only rel_action modes.
 noise_period = 10  # None, int
 dist_measure_period = 10  # None, int
 target_dataset_root_dir = "/data1/sparc/calvin/dataset/calvin_debug_dataset/training"
