@@ -274,6 +274,13 @@ def get_env(dataset_path, obs_space=None, show_gui=True, **kwargs):
 
     render_conf = OmegaConf.load(Path(dataset_path) / ".hydra" / "merged_config.yaml")
 
+    #virtualkss start
+    ood_env = kwargs.get("ood_env", False)
+    if ood_env:
+        render_conf.scene.objects.fixed_objects.table.file = 'calvin_table_D/urdf/calvin_table_D_ood_env.urdf'
+    print('OOD env')
+    #virtualkss end
+
     if obs_space is not None:
         exclude_keys = set(render_conf.cameras.keys()) - {
             re.split("_", key)[1] for key in obs_space["rgb_obs"] + obs_space["depth_obs"]
