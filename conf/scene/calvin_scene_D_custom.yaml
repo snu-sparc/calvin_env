@@ -13,7 +13,7 @@ surfaces:
 objects:
   fixed_objects:
     table:
-      file: calvin_table_D/urdf/calvin_table_D_ood_env.urdf
+      file: calvin_table_D/urdf/calvin_table_D_custom.urdf
       initial_pos: [0, 0, 0]
       initial_orn: [0, 0, 0]
       joints:
@@ -39,13 +39,13 @@ objects:
   movable_objects:
     block_red:
       file: blocks/block_red_middle.urdf
-      initial_pos: [0.05, -0.12, 0.46]
-      initial_orn: [0, 0, 1.57]
+      initial_pos: any
+      initial_orn: any
     block_blue:
       file: blocks/block_blue_small.urdf
-      initial_pos: [0.23, -0.12, 0.46]
-      initial_orn: [0, 0, 0]
+      initial_pos: any
+      initial_orn: any
     block_pink:
       file: blocks/block_pink_big.urdf
-      initial_pos: [0.10, 0.08, 0.46]
-      initial_orn: [0, 0, 1.57]
+      initial_pos: any
+      initial_orn: any
