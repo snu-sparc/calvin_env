@@ -1,3 +1,6 @@
+#virtualkss
+data/calvin_table_D_custom_*
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
