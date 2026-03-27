@@ -1,0 +1,21 @@
+seed: 0
+use_vr: true
+data_path: data
+save_dir: /tmp
+record: true
+
+hydra:
+  run:
+    dir: ${save_dir}/${now:%Y-%m-%d}/${now:%H-%M-%S}
+
+defaults:
+#virtualkss  - cameras: no_cameras
+  - cameras: static_and_gripper #virtualkss
+  - vr_input: vr_input
+  - env: play_table_env
+  - scene: calvin_scene_D_ood_env
+  - robot: panda_longer_finger
+  - tasks: new_playtable_tasks
+  - recorder: recorder
+  - override hydra/job_logging: colorlog
+  - override hydra/hydra_logging: colorlog
