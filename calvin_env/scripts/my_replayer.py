@@ -20,6 +20,8 @@ import numpy as np
 import pybullet as p
 import os
 
+import shutil
+
 from calvin_env.envs.tasks import Tasks
 
 np.float = float
@@ -29,7 +31,10 @@ env_reset_period = 1  # None, int
 add_action_noise = True  # True, False. yet only rel_action modes.
 action_noise_period = 1  # None, int
 dist_measure_period = 10  # None, int
-target_dataset_root_dir = os.environ['CALVIN_DEBUG_TRAINING']
+
+split = 'training'
+
+target_dataset_root_dir = f"{os.environ['ORIGINAL_CALVIN_DEBUG']}/{split}"
 
 action_from = 'dataset'  # 'dataset', 'eval'
 NUM_SEQUENCES = 10
@@ -39,8 +44,8 @@ add_ood_env = True
 processing_limit = 10
 save_log = True
 noise_scale = 2.5
-processed_output_save_dir = os.environ['CALVIN_ABCD_D_NOISE']
-processed_output_save_dir = os.environ['CALVIN_DEBUG_NOISE']
+num_colors = 20
+processed_output_save_dir = f"{os.environ['CALVIN_DEBUG_NOISE']}/{split}"
 
 def noise(action, pos_std=0.01, rot_std=1):
     """
@@ -54,13 +59,16 @@ def noise(action, pos_std=0.01, rot_std=1):
     pos, orn = p.multiplyTransforms(pos, orn, pos_noise, rot_noise)
     return pos, orn, gripper
 
+from hydra import compose
+
 if add_ood_env:
     config_name="config_data_collection_ood_env"
 else:
     config_name="config_data_collection"
 @hydra.main(config_path="../../conf", config_name=config_name)
 def run_env(cfg):
-    env = hydra.utils.instantiate(cfg.env, show_gui=False, use_vr=False, use_scene_info=True)
+    #env = hydra.utils.instantiate(cfg.env, show_gui=False, use_vr=False, use_scene_info=True)
+    #env.close()
 
     root_dir = Path(target_dataset_root_dir)
 
@@ -73,8 +81,12 @@ def run_env(cfg):
     prev_info = None
     t1 = time.time()
 
+    config_name_list = [f"config_data_collection_custom_{i}" for i in range(num_colors)]
+    conf_dir = Path(__file__).resolve().parent / "../../conf"
+    conf_dir = conf_dir.resolve()
+
     if save_log:
-        save_root = root_dir / (
+        save_root = Path(processed_output_save_dir) / (
             f"replay_frames_lang_ranges_"
             f"[replay_action_type({replay_action_type})_"
             f"env_reset_period({env_reset_period})_"
@@ -84,12 +96,26 @@ def run_env(cfg):
         )
         save_root.mkdir(parents=True, exist_ok=True)
 
+    env = None
+
     for ridx, (start, end) in enumerate(indx_ranges):
         if ridx > processing_limit:
-            print('')
             break
         
         print(f"\n=== range {ridx}: {start} ~ {end} ===")
+        cfg_idx = ridx % len(config_name_list)
+        selected_config_name = config_name_list[cfg_idx]
+        selected_cfg = compose(config_name=selected_config_name)
+        print(f"[config] using {selected_config_name}")
+
+        if env is not None and hasattr(env, "close"):
+            env.close()
+        
+        env = hydra.utils.instantiate(selected_cfg.env, show_gui=False, use_vr=False, use_scene_info=True)
+
+        prev_info = None
+        prev_tcp_pos = None
+        
         save_dir = save_root
 
         step_ids = []
@@ -258,7 +284,7 @@ def run_env(cfg):
                 'robot_obs_xyz': o["robot_obs"][:3]
             }
 
-            out_file = root_dir / f"episode_{i:07d}_noisy_action_image_added.npz"
+            out_file = Path(processed_output_save_dir) / f"episode_{i:07d}_noisy_action_image_added.npz"
             np.savez_compressed(out_file, **out)
 
             time.sleep(0.01)
@@ -351,6 +377,9 @@ def run_env(cfg):
                 plt.savefig(fig_path, dpi=150)
                 plt.close()
                 print(f"[saved] distance plot -> {fig_path}")
+    
+    if env is not None and hasattr(env, "close"):
+        env.close()
 
     print("elapsed:", time.time() - t1)
 
@@ -614,3 +643,33 @@ if __name__ == "__main__":
         print('wrong action_from')
     end_time = time.time()
     print("실행 시간:", end_time - start_time, "초")
+
+    src_dir = Path(target_dataset_root_dir)
+    dst_dir = Path(processed_output_save_dir)
+    dst_dir.mkdir(parents=True, exist_ok=True)
+
+    items_to_copy = [
+        "statistics.yaml",
+        "lang_annotations",
+        "replay_frames_lang_ranges",
+        "ep_start_end_ids.npy",
+        ".hydra",
+        "ep_lens.npy",
+        "scene_info.npy",
+        "lang_paraphrase-MiniLM-L3-v2",
+    ]
+
+    for name in items_to_copy:
+        src = src_dir / name
+        dst = dst_dir / name
+
+        if not src.exists():
+            print(f"Not found: {src}")
+            continue
+
+        if src.is_dir():
+            shutil.copytree(src, dst, dirs_exist_ok=True)
+            print(f"Copied directory: {src} -> {dst}")
+        else:
+            shutil.copy2(src, dst)
+            print(f"Copied file: {src} -> {dst}")
