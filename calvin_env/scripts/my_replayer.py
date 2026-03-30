@@ -50,6 +50,123 @@ num_colors = 20
 processed_output_save_dir = f"{os.environ['CALVIN_DEBUG_NOISE']}/{split}"
 processed_output_save_dir = f"{os.environ['CALVIN_DEBUG_NOISE']}/{split}_mytest"
 
+# =========================
+# [ADDED] gaussian blur augmentation
+# =========================
+add_random_gaussian_blur = True
+
+# reproducible seed
+blur_random_seed = 1234
+
+# per image blur patch 개수
+blur_num_patches_min = 3
+blur_num_patches_max = 10
+
+# gaussian blur kernel 후보 (홀수 권장)
+blur_kernel_candidates = [9, 15, 21, 31]
+
+# patch 크기 비율 범위 (이미지 width/height 대비)
+blur_size_ratio_min = 0.05
+blur_size_ratio_max = 0.5
+
+# patch 모양 후보
+blur_shape_candidates = ["triangle", "rectangle", "circle", "ellipse"]
+
+# 각 카메라별 적용 여부
+apply_blur_to_static = True
+apply_blur_to_gripper = True
+
+# =========================
+# [ADDED] reproducible random gaussian blur patches
+# =========================
+def apply_random_gaussian_blur_patches(
+    image,
+    rng,
+    num_patches_range=(1, 5),
+    kernel_candidates=(9, 15, 21, 31),
+    size_ratio_range=(0.05, 0.25),
+    shape_candidates=("circle", "ellipse", "rectangle", "triangle"),
+):
+    """
+    image: H x W x C
+    rng: np.random.Generator
+    랜덤 위치/모양/크기/개수의 patch 영역에만 Gaussian blur 적용
+    rectangle / ellipse / triangle은 rotation 가능
+    """
+    if image is None:
+        return image
+
+    out = image.copy()
+    h, w = out.shape[:2]
+
+    # blur kernel 선택
+    k = int(rng.choice(kernel_candidates))
+    if k % 2 == 0:
+        k += 1
+
+    blurred = cv2.GaussianBlur(out, (k, k), sigmaX=0)
+
+    # patch 개수 선택
+    n_patches = int(rng.integers(num_patches_range[0], num_patches_range[1] + 1))
+
+    mask = np.zeros((h, w), dtype=np.uint8)
+
+    for _ in range(n_patches):
+        shape = rng.choice(shape_candidates)
+
+        cx = int(rng.integers(0, w))
+        cy = int(rng.integers(0, h))
+
+        rw = max(1, int(rng.uniform(*size_ratio_range) * w))
+        rh = max(1, int(rng.uniform(*size_ratio_range) * h))
+
+        angle = float(rng.uniform(0, 360))
+
+        if shape == "circle":
+            radius = max(1, min(rw, rh) // 2)
+            cv2.circle(mask, (cx, cy), radius, 255, thickness=-1)
+
+        elif shape == "ellipse":
+            axes = (max(1, rw // 2), max(1, rh // 2))
+            cv2.ellipse(mask, (cx, cy), axes, angle, 0, 360, 255, thickness=-1)
+
+        elif shape == "rectangle":
+            rot_rect = ((float(cx), float(cy)), (float(rw), float(rh)), angle)
+            box = cv2.boxPoints(rot_rect)   # (4, 2)
+            box = np.int32(box)
+            cv2.fillConvexPoly(mask, box, 255)
+
+        elif shape == "triangle":
+            # 중심 기준의 기본 삼각형을 만든 뒤 회전 + 평행이동
+            half_w = rw / 2.0
+            half_h = rh / 2.0
+
+            # 위쪽 꼭짓점 1개, 아래쪽 꼭짓점 2개
+            pts = np.array([
+                [0.0, -half_h],
+                [-half_w, half_h],
+                [half_w, half_h],
+            ], dtype=np.float32)
+
+            theta = np.deg2rad(angle)
+            rot = np.array([
+                [np.cos(theta), -np.sin(theta)],
+                [np.sin(theta),  np.cos(theta)],
+            ], dtype=np.float32)
+
+            pts = pts @ rot.T
+            pts[:, 0] += cx
+            pts[:, 1] += cy
+
+            pts[:, 0] = np.clip(pts[:, 0], 0, w - 1)
+            pts[:, 1] = np.clip(pts[:, 1], 0, h - 1)
+
+            pts = np.int32(pts)
+            cv2.fillConvexPoly(mask, pts, 255)
+
+    out[mask > 0] = blurred[mask > 0]
+    return out
+
 def noise(action, pos_std=0.01, rot_std=1):
     """
     adds gaussian noise to position and orientation.
@@ -97,6 +214,7 @@ def run_env():
             f"add_action_noise({add_action_noise})_"
             f"action_noise_period({action_noise_period})_"
             f"dist_measure_period({dist_measure_period})_SUM_AND_ENDPOINT]"
+            f"add_random_gaussian_blur({add_random_gaussian_blur})]"
         )
         save_root.mkdir(parents=True, exist_ok=True)
 
@@ -269,6 +387,40 @@ def run_env():
 
             img = o["rgb_obs"]["rgb_static"]
             gripper_img = o["rgb_obs"]["rgb_gripper"]
+
+            # =========================
+            # [ADDED] deterministic blur per frame/camera
+            # 같은 i 에 대해서 항상 같은 blur가 나오도록 seed 고정
+            # =========================
+            if add_random_gaussian_blur:
+                # frame index i 기준으로 카메라별 seed 분리
+                static_rng = np.random.default_rng(blur_random_seed + i * 2 + 0)
+                gripper_rng = np.random.default_rng(blur_random_seed + i * 2 + 1)
+
+                if apply_blur_to_static:
+                    img = apply_random_gaussian_blur_patches(
+                        img,
+                        rng=static_rng,
+                        num_patches_range=(blur_num_patches_min, blur_num_patches_max),
+                        kernel_candidates=blur_kernel_candidates,
+                        size_ratio_range=(blur_size_ratio_min, blur_size_ratio_max),
+                        shape_candidates=blur_shape_candidates,
+                    )
+
+                if apply_blur_to_gripper:
+                    gripper_img = apply_random_gaussian_blur_patches(
+                        gripper_img,
+                        rng=gripper_rng,
+                        num_patches_range=(blur_num_patches_min, blur_num_patches_max),
+                        kernel_candidates=blur_kernel_candidates,
+                        size_ratio_range=(blur_size_ratio_min, blur_size_ratio_max),
+                        shape_candidates=blur_shape_candidates,
+                    )
+
+                # 저장용 obs에 반영
+                o["rgb_obs"]["rgb_static"] = img
+                o["rgb_obs"]["rgb_gripper"] = gripper_img
+
             if save_log:
                 cv2.imwrite(str(save_dir / f"frame_{i:07d}.png"), img[:, :, ::-1])
                 cv2.imwrite(str(save_dir / f"gripper_frame_{i:07d}.png"), gripper_img[:, :, ::-1])
