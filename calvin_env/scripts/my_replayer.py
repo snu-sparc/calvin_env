@@ -21,6 +21,8 @@ import pybullet as p
 import os
 
 import shutil
+import gc
+from hydra import compose, initialize
 
 from calvin_env.envs.tasks import Tasks
 
@@ -46,6 +48,7 @@ save_log = True
 noise_scale = 2.5
 num_colors = 20
 processed_output_save_dir = f"{os.environ['CALVIN_DEBUG_NOISE']}/{split}"
+processed_output_save_dir = f"{os.environ['CALVIN_DEBUG_NOISE']}/{split}_mytest"
 
 def noise(action, pos_std=0.01, rot_std=1):
     """
@@ -59,31 +62,32 @@ def noise(action, pos_std=0.01, rot_std=1):
     pos, orn = p.multiplyTransforms(pos, orn, pos_noise, rot_noise)
     return pos, orn, gripper
 
-from hydra import compose
-
-if add_ood_env:
-    config_name="config_data_collection_ood_env"
-else:
-    config_name="config_data_collection"
-@hydra.main(config_path="../../conf", config_name=config_name)
-def run_env(cfg):
+# if add_ood_env:
+#     config_name="config_data_collection_ood_env"
+# else:
+#     config_name="config_data_collection"
+# @hydra.main(config_path="../../conf", config_name=config_name)
+# def run_env(cfg):
+def run_env():
     #env = hydra.utils.instantiate(cfg.env, show_gui=False, use_vr=False, use_scene_info=True)
-    #env.close()
 
-    root_dir = Path(target_dataset_root_dir)
-
-    ann_path = root_dir / "lang_annotations" / "auto_lang_ann.npy"
-    ann = np.load(ann_path, allow_pickle=True).item()
-    indx_ranges = ann["info"]["indx"]
-    task_names = ann["language"]["task"]
-
-    tasks = hydra.utils.instantiate(cfg.tasks)
-    prev_info = None
-    t1 = time.time()
-
-    config_name_list = [f"config_data_collection_custom_{i}" for i in range(num_colors)]
+    config_name_list = [f"config_data_collection_{i}" for i in range(num_colors)]
     conf_dir = Path(__file__).resolve().parent / "../../conf"
     conf_dir = conf_dir.resolve()
+
+    with initialize(config_path="../../conf"):
+        cfg = compose(config_name=config_name_list[0])
+
+        root_dir = Path(target_dataset_root_dir)
+
+        ann_path = root_dir / "lang_annotations" / "auto_lang_ann.npy"
+        ann = np.load(ann_path, allow_pickle=True).item()
+        indx_ranges = ann["info"]["indx"]
+        task_names = ann["language"]["task"]
+
+        tasks = hydra.utils.instantiate(cfg.tasks)
+        prev_info = None
+        t1 = time.time()
 
     if save_log:
         save_root = Path(processed_output_save_dir) / (
@@ -96,20 +100,17 @@ def run_env(cfg):
         )
         save_root.mkdir(parents=True, exist_ok=True)
 
-    env = None
-
     for ridx, (start, end) in enumerate(indx_ranges):
+
         if ridx > processing_limit:
             break
-        
-        print(f"\n=== range {ridx}: {start} ~ {end} ===")
-        cfg_idx = ridx % len(config_name_list)
-        selected_config_name = config_name_list[cfg_idx]
-        selected_cfg = compose(config_name=selected_config_name)
-        print(f"[config] using {selected_config_name}")
 
-        if env is not None and hasattr(env, "close"):
-            env.close()
+        with initialize(config_path="../../conf"):
+            print(f"\n=== range {ridx}: {start} ~ {end} ===")
+            cfg_idx = ridx % len(config_name_list)
+            selected_config_name = config_name_list[cfg_idx]
+            selected_cfg = compose(config_name=selected_config_name)
+            print(f"[config] using {selected_config_name}")
         
         env = hydra.utils.instantiate(selected_cfg.env, show_gui=False, use_vr=False, use_scene_info=True)
 
@@ -288,6 +289,20 @@ def run_env(cfg):
             np.savez_compressed(out_file, **out)
 
             time.sleep(0.01)
+        
+        try:
+            env.close()
+        except Exception as e:
+            print(f"Warning closing env: {e}")
+        finally:
+            if hasattr(env, "ownsPhysicsClient"):
+                env.ownsPhysicsClient = False
+            if hasattr(env, "cid"):
+                env.cid = -1
+            env = None
+
+        gc.collect()
+        cv2.destroyAllWindows()
 
         # =========================
         # 구간 그래프 저장
@@ -377,9 +392,6 @@ def run_env(cfg):
                 plt.savefig(fig_path, dpi=150)
                 plt.close()
                 print(f"[saved] distance plot -> {fig_path}")
-    
-    if env is not None and hasattr(env, "close"):
-        env.close()
 
     print("elapsed:", time.time() - t1)
 
