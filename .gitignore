@@ -3,6 +3,10 @@ data/calvin_table_D_custom_*
 conf/scene/calvin_scene_D_custom_*
 conf/config_data_collection_custom_*
 
+conf/config_data_collection_*
+conf/scene/calvin_scene_D_*
+data/calvin_table_D_*
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
