@@ -36,19 +36,21 @@ dist_measure_period = 10  # None, int
 
 split = 'training'
 
-target_dataset_root_dir = f"{os.environ['ORIGINAL_CALVIN_DEBUG']}/{split}"
+target_dataset_root_dir = f"{os.environ['ORIGINAL_CALVIN_ABCD_D_DIR']}/{split}"
 
 action_from = 'dataset'  # 'dataset', 'eval'
 NUM_SEQUENCES = 10
 
 ### only for run_env
+modify_clean_image = True
 add_ood_env = True
-processing_limit = 10
+processing_limit = 1000
 save_log = True
 noise_scale = 2.5
 num_colors = 20
-processed_output_save_dir = f"{os.environ['CALVIN_DEBUG_NOISE']}/{split}"
-processed_output_save_dir = f"{os.environ['CALVIN_DEBUG_NOISE']}/{split}_mytest"
+random_config_selection = True  # True: randomly select config, False: sequential (ridx % num_colors)
+random_config_seed = 42
+processed_output_save_dir = f"{os.environ['ORIGINAL_CALVIN_ABCD_D_NOISE_DIR']}/{split}"
 
 # =========================
 # [ADDED] gaussian blur augmentation
@@ -188,9 +190,15 @@ def noise(action, pos_std=0.01, rot_std=1):
 def run_env():
     #env = hydra.utils.instantiate(cfg.env, show_gui=False, use_vr=False, use_scene_info=True)
 
-    config_name_list = [f"config_data_collection_{i}" for i in range(num_colors)]
+    if add_ood_env:
+        config_name_list = [f"config_data_collection_{i}" for i in range(num_colors)]
+    else:
+        config_name_list = ["config_data_collection"]
     conf_dir = Path(__file__).resolve().parent / "../../conf"
     conf_dir = conf_dir.resolve()
+
+    if random_config_selection:
+        config_rng = np.random.default_rng(random_config_seed)
 
     with initialize(config_path="../../conf"):
         cfg = compose(config_name=config_name_list[0])
@@ -220,17 +228,32 @@ def run_env():
 
     for ridx, (start, end) in enumerate(indx_ranges):
 
-        if ridx > processing_limit:
+        if ridx >= processing_limit:
             break
+
+        if random_config_selection:
+            cfg_idx = int(config_rng.integers(0, len(config_name_list)))
+            if add_action_noise and modify_clean_image:
+                cfg_idx_no_noise = int(config_rng.integers(0, len(config_name_list)))
+        else:
+            cfg_idx = ridx % len(config_name_list)
+            if add_action_noise and modify_clean_image:
+                cfg_idx_no_noise = (ridx + 1) % len(config_name_list)
 
         with initialize(config_path="../../conf"):
             print(f"\n=== range {ridx}: {start} ~ {end} ===")
-            cfg_idx = ridx % len(config_name_list)
             selected_config_name = config_name_list[cfg_idx]
             selected_cfg = compose(config_name=selected_config_name)
             print(f"[config] using {selected_config_name}")
+
+            if add_action_noise and modify_clean_image:
+                selected_config_name_no_noise = config_name_list[cfg_idx_no_noise]
+                selected_cfg_no_noise = compose(config_name=selected_config_name_no_noise)
+                print(f"[config_no_noise] using {selected_config_name_no_noise}")
         
         env = hydra.utils.instantiate(selected_cfg.env, show_gui=False, use_vr=False, use_scene_info=True)
+        if add_action_noise and modify_clean_image:
+            env_no_noise = hydra.utils.instantiate(selected_cfg_no_noise.env, show_gui=False, use_vr=False, use_scene_info=True)
 
         prev_info = None
         prev_tcp_pos = None
@@ -274,12 +297,16 @@ def run_env():
                 if (i - start) % env_reset_period == 0:
                     print(f"reset {i}")
                     env.reset(scene_obs=data["scene_obs"], robot_obs=data["robot_obs"])
+                    if add_action_noise and modify_clean_image:
+                        env_no_noise.reset(scene_obs=data["scene_obs"], robot_obs=data["robot_obs"])
                     prev_info = None
                     prev_tcp_pos = None
             else:
                 if i == start:
                     print(f"reset {i}")
                     env.reset(scene_obs=data["scene_obs"], robot_obs=data["robot_obs"])
+                    if add_action_noise and modify_clean_image:
+                        env_no_noise.reset(scene_obs=data["scene_obs"], robot_obs=data["robot_obs"])
                     prev_info = None
                     prev_tcp_pos = None
 
@@ -293,6 +320,9 @@ def run_env():
                 action = (pos, euler, gripper)
             else:
                 raise ValueError("Wrong replay_action_type")
+
+            # save original action before noise for env_no_noise
+            action_original = action if not isinstance(action, np.ndarray) else action.copy()
 
             if replay_action_type == "rel" and add_action_noise and action_noise_period is not None and i % action_noise_period == 0:
                 print('#####################noise added#####################')
@@ -321,6 +351,10 @@ def run_env():
 
             # env step
             o, _, _, info = env.step(action)
+
+            # env_no_noise step (original action without noise)
+            if add_action_noise and modify_clean_image:
+                o_no_noise, _, _, _ = env_no_noise.step(action_original)
 
             # -------------------------
             # real displacement (step dist)
@@ -436,11 +470,16 @@ def run_env():
                 "rgb_gripper_noisy": o["rgb_obs"]["rgb_gripper"],
                 'robot_obs_xyz': o["robot_obs"][:3]
             }
+            if add_action_noise and modify_clean_image:
+                out["rgb_static"] = o_no_noise["rgb_obs"]["rgb_static"]
+                out["rgb_gripper"] = o_no_noise["rgb_obs"]["rgb_gripper"]
+
+            if save_log:
+                cv2.imwrite(str(save_dir / f"clean_frame_{i:07d}.png"), o_no_noise["rgb_obs"]["rgb_static"][:, :, ::-1])
+                cv2.imwrite(str(save_dir / f"clean_gripper_frame_{i:07d}.png"), o_no_noise["rgb_obs"]["rgb_gripper"][:, :, ::-1])
 
             out_file = Path(processed_output_save_dir) / f"episode_{i:07d}_noisy_action_image_added.npz"
             np.savez_compressed(out_file, **out)
-
-            time.sleep(0.01)
         
         try:
             env.close()
@@ -452,6 +491,18 @@ def run_env():
             if hasattr(env, "cid"):
                 env.cid = -1
             env = None
+
+        if add_action_noise and modify_clean_image:
+            try:
+                env_no_noise.close()
+            except Exception as e:
+                print(f"Warning closing env_no_noise: {e}")
+            finally:
+                if hasattr(env_no_noise, "ownsPhysicsClient"):
+                    env_no_noise.ownsPhysicsClient = False
+                if hasattr(env_no_noise, "cid"):
+                    env_no_noise.cid = -1
+                env_no_noise = None
 
         gc.collect()
         cv2.destroyAllWindows()
@@ -554,7 +605,7 @@ def replay_eval():
     import json
     import glob
 
-    env = get_env(Path(os.environ['ORIGINAL_CALVIN_ABCD_D']) / "validation", show_gui=False)
+    env = get_env(Path(os.environ['ORIGINAL_CALVIN_ABCD_D_DIR']) / "validation", show_gui=False)
     conf_dir = Path(os.environ['CONF_DIR']) / "conf"
     task_cfg = OmegaConf.load(
         conf_dir / "callbacks/rollout/tasks/new_playtable_tasks.yaml"
@@ -739,7 +790,6 @@ def replay_eval():
 
             prev_info = deepcopy(info)
             local_step += 1
-            time.sleep(0.01)
 
         # -------------------------
         # sequence별 그래프 저장
