@@ -278,6 +278,9 @@ def get_env(dataset_path, obs_space=None, show_gui=True, **kwargs):
     ood_env = kwargs.get("ood_env", False)
     if ood_env:
         render_conf.scene.objects.fixed_objects.table.file = 'calvin_table_D/urdf/calvin_table_D_ood_env.urdf'
+        # render_conf.scene.objects.fixed_objects.table.file = 'calvin_table_D_7/urdf/calvin_table_D.urdf'
+        # render_conf.scene.objects.fixed_objects.table.file = 'calvin_table_D_17/urdf/calvin_table_D.urdf'
+        # render_conf.scene.objects.fixed_objects.table.file = 'calvin_table_D_13/urdf/calvin_table_D.urdf'
     print('OOD env')
     #virtualkss end
 
