@@ -44,9 +44,9 @@ NUM_SEQUENCES = 10
 ### only for run_env
 modify_clean_image = True
 add_ood_env = True
-processing_limit = 1000
+processing_limit = 10
 save_log = True
-noise_scale = 2.5
+noise_scale = 5 # 2.5
 num_colors = 20
 random_config_selection = True  # True: randomly select config, False: sequential (ridx % num_colors)
 random_config_seed = 42
@@ -169,6 +169,17 @@ def apply_random_gaussian_blur_patches(
     out[mask > 0] = blurred[mask > 0]
     return out
 
+def get_scene_for_episode(episode_idx, scene_info):
+    """
+    scene_info: dict like {'calvin_scene_A': [1802438, 2406143], ...}
+    Returns the scene letter (e.g. 'A') for a given episode index.
+    """
+    for scene_name, (s, e) in scene_info.items():
+        if s <= episode_idx <= e:
+            return scene_name.split('_')[-1]  # e.g. 'A' from 'calvin_scene_A'
+    raise ValueError(f"Episode {episode_idx} does not belong to any scene in scene_info")
+
+
 def noise(action, pos_std=0.01, rot_std=1):
     """
     adds gaussian noise to position and orientation.
@@ -190,18 +201,36 @@ def noise(action, pos_std=0.01, rot_std=1):
 def run_env():
     #env = hydra.utils.instantiate(cfg.env, show_gui=False, use_vr=False, use_scene_info=True)
 
+    # Load scene_info to determine which scene each episode belongs to
+    scene_info_path = Path(target_dataset_root_dir).parent / "scene_info.npy"
+    if not scene_info_path.exists():
+        scene_info_path = Path(target_dataset_root_dir) / "scene_info.npy"
+    scene_info = np.load(scene_info_path, allow_pickle=True).item()
+    print(f"[scene_info] loaded from {scene_info_path}: {scene_info}")
+
     if add_ood_env:
-        config_name_list = [f"config_data_collection_{i}" for i in range(num_colors)]
+        # Build per-scene config name lists: {scene_letter: [config_names]}
+        scene_letters = sorted(set(
+            name.split('_')[-1] for name in scene_info.keys()
+        ))
+        config_name_lists = {
+            sc: [f"config_data_collection_{sc}_{i}" for i in range(num_colors)]
+            for sc in scene_letters
+        }
+        print(f"[config] scene-specific configs: { {sc: len(v) for sc, v in config_name_lists.items()} }")
     else:
-        config_name_list = ["config_data_collection"]
+        config_name_lists = None
     conf_dir = Path(__file__).resolve().parent / "../../conf"
     conf_dir = conf_dir.resolve()
 
     if random_config_selection:
         config_rng = np.random.default_rng(random_config_seed)
 
+    # Use first available config for initial setup (tasks, etc.)
+    first_scene = sorted(scene_info.keys())[0].split('_')[-1]
+    initial_config_name = config_name_lists[first_scene][0] if add_ood_env else "config_data_collection"
     with initialize(config_path="../../conf"):
-        cfg = compose(config_name=config_name_list[0])
+        cfg = compose(config_name=initial_config_name)
 
         root_dir = Path(target_dataset_root_dir)
 
@@ -231,6 +260,14 @@ def run_env():
         if ridx >= processing_limit:
             break
 
+        # Determine the scene for this range based on the start episode index
+        scene_letter = get_scene_for_episode(start, scene_info)
+
+        if add_ood_env:
+            config_name_list = config_name_lists[scene_letter]
+        else:
+            config_name_list = ["config_data_collection"]
+
         if random_config_selection:
             cfg_idx = int(config_rng.integers(0, len(config_name_list)))
             if add_action_noise and modify_clean_image:
@@ -241,7 +278,7 @@ def run_env():
                 cfg_idx_no_noise = (ridx + 1) % len(config_name_list)
 
         with initialize(config_path="../../conf"):
-            print(f"\n=== range {ridx}: {start} ~ {end} ===")
+            print(f"\n=== range {ridx}: {start} ~ {end} (scene {scene_letter}) ===")
             selected_config_name = config_name_list[cfg_idx]
             selected_cfg = compose(config_name=selected_config_name)
             print(f"[config] using {selected_config_name}")

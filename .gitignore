@@ -1,9 +1,14 @@
 #virtualkss
-data/calvin_table_D_custom_*
-conf/scene/calvin_scene_D_custom_*
-conf/config_data_collection_custom_*
-
-conf/config_data_collection_*
+conf/config_data_collection_A_*
+conf/scene/calvin_scene_A_*
+data/calvin_table_A_*
+conf/config_data_collection_B_*
+conf/scene/calvin_scene_B_*
+data/calvin_table_B_*
+conf/config_data_collection_C_*
+conf/scene/calvin_scene_C_*
+data/calvin_table_C_*
+conf/config_data_collection_D_*
 conf/scene/calvin_scene_D_*
 data/calvin_table_D_*
 
