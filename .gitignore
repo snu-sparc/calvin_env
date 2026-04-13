@@ -11,6 +11,9 @@ data/calvin_table_C_*
 conf/config_data_collection_D_*
 conf/scene/calvin_scene_D_*
 data/calvin_table_D_*
+data/blocks/block_blue_*
+data/blocks/block_pink_*
+data/blocks/block_red_*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
