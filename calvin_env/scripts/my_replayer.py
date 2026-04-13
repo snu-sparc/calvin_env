@@ -62,14 +62,14 @@ np.float = float
 # =============================================================================
 # General — 공통 설정
 # =============================================================================
-verbose = True                         # True: 각 step마다 상세 디버그 메시지 출력
+verbose = False                         # True: 각 step마다 상세 디버그 메시지 출력
 
 replay_action_type = "rel"              # 'rel': relative action (7D: dx,dy,dz,droll,dpitch,dyaw,gripper)
                                         # 'abs': absolute action (7D: x,y,z,roll,pitch,yaw,gripper)
 action_from = 'dataset'                 # 'dataset': 데이터셋의 action을 재생 (run_env)
                                         # 'eval': 평가 로그의 action prediction을 재생 (replay_eval)
 split = 'training'                      # 사용할 데이터 split ('training' 또는 'validation')
-dist_measure_period = 10                # N step마다 거리 측정 통계를 계산. None이면 비활성화
+dist_measure_period = None                # N step마다 거리 측정 통계를 계산. None이면 비활성화
 
 target_dataset_root_dir = f"{os.environ['ORIGINAL_CALVIN_ABCD_D_DIR']}/{split}"     # 원본 dataset 경로
 processed_output_save_dir = f"{os.environ['ORIGINAL_CALVIN_ABCD_D_NOISE_DIR']}/{split}"  # 가공된 출력 저장 경로
@@ -80,15 +80,15 @@ processed_output_save_dir = f"{os.environ['ORIGINAL_CALVIN_ABCD_D_NOISE_DIR']}/{
 env_reset_period = 1                    # N step마다 환경을 데이터셋 상태로 리셋
                                         #   1: 매 step마다 리셋 (가장 정확한 재현)
                                         #   None: 시퀀스 시작 시에만 리셋
-processing_limit = 5                    # 처리할 language annotation 시퀀스 수 (ridx 상한)
+processing_limit = 10                    # 처리할 language annotation 시퀀스 수 (ridx 상한)
 save_log = True                         # True: 프레임 PNG + distance plot 저장
 modify_clean_image = True               # True: PASS 2에서 clean env를 별도로 돌려 원본 action의 이미지를 생성
                                         #   (noisy action으로 렌더링한 이미지와 쌍을 이룬다)
 add_ood_env = False                     # True: scene별 OOD 환경 config (조명/텍스처 변경) 사용
                                         # False: 기본 config 사용 (scene 알파벳에 맞는 _0 config)
-num_colors = 3                          # add_ood_env=True일 때, scene당 OOD config 개수
+num_colors = 20                          # add_ood_env=True일 때, scene당 OOD config 개수
                                         #   예: config_data_collection_A_0, _A_1, _A_2
-random_config_selection = True          # True: OOD config를 랜덤 선택
+random_config_selection = False          # True: OOD config를 랜덤 선택
                                         # False: ridx % num_colors 순차 선택
 random_config_seed = 42                 # random_config_selection의 재현성을 위한 seed
 
@@ -102,18 +102,18 @@ noise_scale = 20                        # 노이즈 크기. pos_std(m) / rot_std
                                         #   큰 값 = 심한 노이즈, 작은 값(2.5 등) = 경미한 노이즈
 
 # Block color diversification — 블록 색상 다양화
-diversify_block_colors = False          # True: 매 시퀀스마다 red/blue/pink 블록의 색상을 랜덤 변경
+diversify_block_colors = True          # True: 매 시퀀스마다 red/blue/pink 블록의 색상을 랜덤 변경
                                         #   사전 준비 필요: calvin_color_customizer.py --diversify_blocks
 num_block_colors = 11                   # 사용 가능한 색상 수 (= len(BASIC_CALLABLE_COLOR_LIST))
                                         #   변경하지 말 것 — URDF 파일이 0~10 인덱스로 생성되어 있음
 block_color_seed = 9999                 # 블록 색상 랜덤 선택의 재현성을 위한 seed
-same_block_colors_for_clean = True      # True: env(noisy)와 env_no_noise(clean)가 동일한 블록 색 사용
+same_block_colors_for_clean = False      # True: env(noisy)와 env_no_noise(clean)가 동일한 블록 색 사용
                                         #   → 11색 중 3색만 사용
                                         # False: env와 env_no_noise에 서로 겹치지 않는 색 배정
                                         #   → 11색 중 6색 사용 (3색 + 3색, 겹침 없음)
 
 # Gaussian blur augmentation — 랜덤 가우시안 블러 패치
-add_random_gaussian_blur = False        # True: 이미지에 랜덤 위치/모양/크기의 blur 패치 적용
+add_random_gaussian_blur = True        # True: 이미지에 랜덤 위치/모양/크기의 blur 패치 적용
 blur_random_seed = 1234                 # 블러 패치의 재현성을 위한 seed (frame index와 조합)
 blur_num_patches_min = 3                # 한 이미지당 최소 blur 패치 수
 blur_num_patches_max = 10               # 한 이미지당 최대 blur 패치 수
