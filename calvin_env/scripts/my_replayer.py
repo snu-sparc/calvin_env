@@ -80,8 +80,9 @@ processed_output_save_dir = f"{os.environ['ORIGINAL_CALVIN_ABCD_D_NOISE_DIR']}/{
 env_reset_period = 1                    # N step마다 환경을 데이터셋 상태로 리셋
                                         #   1: 매 step마다 리셋 (가장 정확한 재현)
                                         #   None: 시퀀스 시작 시에만 리셋
-processing_limit = 10                    # 처리할 language annotation 시퀀스 수 (ridx 상한)
+processing_limit = 20                    # 처리할 language annotation 시퀀스 수 (ridx 상한)
 save_log = True                         # True: 프레임 PNG + distance plot 저장
+save_log_limit = None
 modify_clean_image = True               # True: PASS 2에서 clean env를 별도로 돌려 원본 action의 이미지를 생성
                                         #   (noisy action으로 렌더링한 이미지와 쌍을 이룬다)
 add_ood_env = False                     # True: scene별 OOD 환경 config (조명/텍스처 변경) 사용
@@ -98,7 +99,7 @@ add_action_noise = True                 # True: rel_action에 가우시안 노�
                                         #   원본 action → clean image (PASS 2, modify_clean_image=True일 때)
 action_noise_period = 1                 # N step마다 노이즈 추가. None이면 비활성화
                                         #   1: 매 step마다, 2: 짝수 step마다, ...
-noise_scale = 20                        # 노이즈 크기. pos_std(m) / rot_std(°) 동일값 사용
+noise_scale = 5                        # 노이즈 크기. pos_std(m) / rot_std(°) 동일값 사용
                                         #   큰 값 = 심한 노이즈, 작은 값(2.5 등) = 경미한 노이즈
 
 # Block color diversification — 블록 색상 다양화
@@ -501,8 +502,8 @@ def run_env():
                     all_indices = block_color_rng.choice(num_block_colors, size=6, replace=False)
                     noisy_indices = all_indices[:3]   # env (noisy) 용
                     clean_indices = all_indices[3:]    # env_no_noise (clean) 용
-                    color_map = randomize_block_colors_in_cfg(selected_cfg, block_color_rng, num_block_colors, indices=noisy_indices)
-                    randomize_block_colors_in_cfg(selected_cfg_no_noise, block_color_rng, num_block_colors, indices=clean_indices)
+                    randomize_block_colors_in_cfg(selected_cfg, block_color_rng, num_block_colors, indices=noisy_indices)
+                    color_map = randomize_block_colors_in_cfg(selected_cfg_no_noise, block_color_rng, num_block_colors, indices=clean_indices)
                 else:
                     # [같은 색 모드] 3색만 뽑아서 env에 적용
                     color_map = randomize_block_colors_in_cfg(selected_cfg, block_color_rng, num_block_colors)
@@ -741,7 +742,7 @@ def run_env():
                 o["rgb_obs"]["rgb_static"] = img
                 o["rgb_obs"]["rgb_gripper"] = gripper_img
 
-            if save_log:
+            if save_log and (save_log_limit is None or save_log_limit > (i - start)):
                 cv2.imwrite(str(save_dir / f"frame_{i:07d}.png"), img[:, :, ::-1])
                 cv2.imwrite(str(save_dir / f"gripper_frame_{i:07d}.png"), gripper_img[:, :, ::-1])
 
@@ -818,7 +819,7 @@ def run_env():
                 pending_outputs[i]["rgb_static"] = o_no_noise["rgb_obs"]["rgb_static"]
                 pending_outputs[i]["rgb_gripper"] = o_no_noise["rgb_obs"]["rgb_gripper"]
 
-                if save_log:
+                if save_log and (save_log_limit is None or save_log_limit > (i - start)):
                     cv2.imwrite(str(save_dir / f"clean_frame_{i:07d}.png"), o_no_noise["rgb_obs"]["rgb_static"][:, :, ::-1])
                     cv2.imwrite(str(save_dir / f"clean_gripper_frame_{i:07d}.png"), o_no_noise["rgb_obs"]["rgb_gripper"][:, :, ::-1])
 
@@ -990,6 +991,152 @@ def run_env():
         with open(log_out_path, "w", encoding="utf-8") as f:
             _json.dump(log_data, f, indent=2, ensure_ascii=False)
         print(f"[saved] color mapping log ({len(log_data)} entries) -> {log_out_path}")
+
+def fix_annotations_only():
+    """env를 생성하지 않고, block color RNG 시퀀스만 재현하여
+    language annotation과 block_color_map_log를 PASS 2(clean env) 색상 기준으로 재생성한다.
+
+    run_env()와 동일한 RNG 소비 패턴을 재현하므로,
+    동일한 seed/설정에서 동일한 색상 매핑이 생성된다.
+
+    전제 조건:
+      - diversify_block_colors = True
+      - 기존 run_env()와 동일한 설정값 (seed, processing_limit 등)
+    """
+    assert diversify_block_colors, "fix_annotations_only requires diversify_block_colors=True"
+
+    # ----- scene_info 로드 -----
+    scene_info_path = Path(target_dataset_root_dir).parent / "scene_info.npy"
+    if not scene_info_path.exists():
+        scene_info_path = Path(target_dataset_root_dir) / "scene_info.npy"
+    scene_info = np.load(scene_info_path, allow_pickle=True).item()
+    print(f"[scene_info] loaded from {scene_info_path}")
+
+    # ----- OOD config 목록 구성 (env는 만들지 않지만, config 개수에 따라 RNG 소비가 달라짐) -----
+    if add_ood_env:
+        scene_letters = sorted(set(
+            name.split('_')[-1] for name in scene_info.keys()
+        ))
+        config_name_lists = {
+            sc: [f"config_data_collection_{sc}_{i}" for i in range(num_colors)]
+            for sc in scene_letters
+        }
+    else:
+        config_name_lists = None
+
+    # ----- RNG 초기화 (run_env와 동일한 seed) -----
+    if random_config_selection:
+        config_rng = np.random.default_rng(random_config_seed)
+
+    block_color_rng = np.random.default_rng(block_color_seed)
+
+    # ----- annotation 로드 -----
+    root_dir = Path(target_dataset_root_dir)
+    ann_path = root_dir / "lang_annotations" / "auto_lang_ann.npy"
+    ann = np.load(ann_path, allow_pickle=True).item()
+    indx_ranges = ann["info"]["indx"]
+    task_names = ann["language"]["task"]
+
+    from copy import deepcopy as _dc
+    ann_modified = _dc(ann)
+    color_map_log = []
+
+    # =========================================================================
+    # 시퀀스(ridx)별 루프 — run_env()와 동일한 RNG 소비 순서를 재현
+    # =========================================================================
+    for ridx, (start, end) in enumerate(indx_ranges):
+        if ridx >= processing_limit:
+            break
+
+        scene_letter = get_scene_for_episode(start, scene_info)
+
+        # ----- config 후보 목록 (len만 필요) -----
+        if add_ood_env:
+            config_name_list = config_name_lists[scene_letter]
+        else:
+            config_name_list = [f"config_data_collection_{scene_letter}_0"]
+
+        # ----- config RNG 소비 (run_env와 동일 패턴 유지) -----
+        if random_config_selection:
+            _cfg_idx = int(config_rng.integers(0, len(config_name_list)))
+            if add_action_noise and modify_clean_image:
+                _cfg_idx_no_noise = int(config_rng.integers(0, len(config_name_list)))
+
+        # ----- block color RNG 소비 (run_env와 동일 패턴 유지) -----
+        if add_action_noise and modify_clean_image and not same_block_colors_for_clean:
+            # [다른 색 모드] 6색 뽑기 → clean(후반 3개)을 color_map으로 사용
+            all_indices = block_color_rng.choice(num_block_colors, size=6, replace=False)
+            clean_indices = all_indices[3:]
+            # clean env 기준 color_map 생성 (cfg 수정은 불필요 — annotation만 변경)
+            color_map = {}
+            orig_colors = ["red", "blue", "pink"]
+            for orig_color, color_idx in zip(orig_colors, clean_indices):
+                color_map[orig_color] = BASIC_CALLABLE_COLOR_LIST[int(color_idx)]
+        else:
+            # [같은 색 모드 또는 PASS 2 없음] 3색 뽑기
+            indices = block_color_rng.choice(num_block_colors, size=3, replace=False)
+            color_map = {}
+            orig_colors = ["red", "blue", "pink"]
+            for orig_color, color_idx in zip(orig_colors, indices):
+                color_map[orig_color] = BASIC_CALLABLE_COLOR_LIST[int(color_idx)]
+
+        # ----- language annotation 치환 -----
+        task_name = task_names[ridx]
+        if any(c in task_name for c in ["red", "blue", "pink"]):
+            orig_ann, new_ann = modify_lang_annotations(ann_modified, ridx, color_map)
+            color_map_log.append((ridx, start, end, task_name, color_map.copy(), orig_ann, new_ann))
+            if verbose:
+                print(f"  [lang] ridx={ridx} task={task_name}: '{orig_ann}' -> '{new_ann}'")
+        else:
+            color_map_log.append((ridx, start, end, task_name, color_map.copy(), None, None))
+
+        if ridx % 500 == 0:
+            print(f"  processed ridx={ridx}/{min(processing_limit, len(indx_ranges))}")
+
+    # =========================================================================
+    # 결과 저장
+    # =========================================================================
+    import json as _json
+
+    out_dir = Path(processed_output_save_dir) / "lang_annotations"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    n_processed = min(processing_limit, len(indx_ranges))
+
+    ann_out = {
+        "language": {
+            "ann": ann_modified["language"]["ann"][:n_processed],
+            "task": ann_modified["language"]["task"][:n_processed],
+        },
+        "info": {
+            "indx": ann_modified["info"]["indx"][:n_processed],
+            "episodes": ann_modified["info"]["episodes"][:n_processed]
+                        if "episodes" in ann_modified["info"] else [],
+        },
+    }
+    if "emb" in ann_modified["language"]:
+        ann_out["language"]["emb"] = ann_modified["language"]["emb"][:n_processed]
+
+    ann_out_path = out_dir / "auto_lang_ann_modified.npy"
+    np.save(ann_out_path, ann_out)
+    print(f"[saved] modified annotations ({n_processed}/{len(indx_ranges)}) -> {ann_out_path}")
+
+    log_out_path = out_dir / "block_color_map_log.json"
+    log_data = []
+    for (ridx_val, start_val, end_val, task_name, cmap, orig_ann, new_ann) in color_map_log:
+        log_data.append({
+            "ridx": int(ridx_val),
+            "start": int(start_val),
+            "end": int(end_val),
+            "task_name": task_name,
+            "color_map": cmap,
+            "original_ann": orig_ann,
+            "modified_ann": new_ann,
+        })
+    with open(log_out_path, "w", encoding="utf-8") as f:
+        _json.dump(log_data, f, indent=2, ensure_ascii=False)
+    print(f"[saved] color mapping log ({len(log_data)} entries) -> {log_out_path}")
+
 
 def replay_eval():
     """평가 로그 재생 모드의 메인 함수.
@@ -1272,6 +1419,8 @@ if __name__ == "__main__":
         run_env()          # 데이터셋 replay 모드
     elif action_from == 'eval':
         replay_eval()      # 평가 로그 replay 모드
+    elif action_from == 'fix_annotations':
+        fix_annotations_only()  # annotation만 재생성 (env 없이)
     else:
         print('wrong action_from')
     end_time = time.time()
