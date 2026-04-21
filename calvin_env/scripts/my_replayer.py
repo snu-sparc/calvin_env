@@ -2,42 +2,120 @@
 my_replayer.py — Calvin 환경 replay + noisy data augmentation 파이프라인
 (modified from reset_env_rendered_episode.py & noisy_action_modifier.py)
 
-사용법:
-    # 환경변수 설정 후 실행
-    export ORIGINAL_CALVIN_ABCD_D_DIR=/path/to/calvin/dataset
-    export ORIGINAL_CALVIN_ABCD_D_NOISE_DIR=/path/to/output
-    python my_replayer.py
+================================================================================
+실행 모드  (action_from 변수로 선택)
+================================================================================
 
-    # replay_eval 모드 (action_from='eval')인 경우 추가 환경변수 필요:
-    export CONF_DIR=/path/to/calvin_conf
+  'dataset'          run_env()            데이터셋 replay → noisy/clean 이미지 쌍 생성
+  'eval'             replay_eval()        평가 로그 action prediction replay
+  'fix_annotations'  fix_annotations_only()  env 없이 annotation만 재생성
 
-기능:
-    [run_env] (action_from='dataset')
-      - 데이터셋의 action을 재생하면서 noisy image / clean image 쌍 생성
-      - dist_measure_period(기본 10) step마다:
-        1) command / real displacement 누적 합(sum) 계산 및 출력
-        2) 첫 step ~ 마지막 step 사이의 endpoint displacement 계산 및 출력
-           예) step 0~9, 10~19, 20~29 ...
-      - 구간별 distance plot PNG 저장
-      - episode_{i}_noisy_action_image_added.npz 저장
+================================================================================
+필수 환경변수
+================================================================================
 
-    [replay_eval] (action_from='eval')
-      - 평가 로그에서 action prediction을 로드하여 eval_sequences와 1:1 매칭 replay
-      - 프레임 PNG + distance plot 저장
+  # 공통 (모든 모드)
+  export ORIGINAL_CALVIN_ABCD_D_DIR=/path/to/original/calvin/dataset
+  export ORIGINAL_CALVIN_ABCD_D_NOISE_DIR=/path/to/output
 
-    [block color diversification] (diversify_block_colors=True)
-      - 사전 준비: calvin_color_customizer.py --diversify_blocks 실행하여 인덱스 블록 URDF 생성
-        ex) block_red_big_0.urdf ~ block_red_big_10.urdf (11색)
-      - ridx마다 red/blue/pink 각각에 겹치지 않는 3개 색상을 랜덤 선택하여 URDF 교체
-      - task_name에 red/blue/pink가 포함된 경우 language annotation도 새 색상으로 치환
-        (task_name 자체는 변경하지 않음)
-      - 출력:
-        - {processed_output_save_dir}/lang_annotations/auto_lang_ann_modified.npy
-        - {processed_output_save_dir}/lang_annotations/block_color_map_log.json
+  # replay_eval 모드 추가 필요
+  export CONF_DIR=/path/to/calvin_conf
 
-    [gaussian blur augmentation] (add_random_gaussian_blur=True)
-      - 랜덤 위치/모양/크기의 patch 영역에 Gaussian blur 적용
-      - frame index 기반 deterministic seed로 재현 가능
+================================================================================
+실행 방법
+================================================================================
+
+  python my_replayer.py
+
+================================================================================
+주요 설정 변수 (파일 상단에서 직접 수정)
+================================================================================
+
+  [공통]
+  action_from            실행 모드 ('dataset' / 'eval' / 'fix_annotations')
+  split                  데이터 split ('training' / 'validation')
+  verbose                True: step마다 상세 디버그 출력
+
+  [run_env 전용]
+  processing_limit       처리할 시퀀스(ridx) 수 상한
+  env_reset_period       N step마다 데이터셋 상태로 환경 리셋 (1=매 step, None=시퀀스 시작만)
+  modify_clean_image     True: PASS 2에서 clean env를 별도 실행하여 clean image 생성
+  save_log               True: 프레임 PNG + distance plot 저장
+  dist_measure_period    N step마다 displacement 통계 계산 (None=비활성화)
+
+  [OOD 환경 — 테이블 텍스처/조명 다양화]
+  add_ood_env            True: scene별 다중 OOD config 사용
+                           사전 준비: calvin_color_customizer.py --target {T} --num_colors N
+  num_colors             add_ood_env=True일 때 scene당 config 개수
+  random_config_selection  True: ridx마다 OOD config 랜덤 선택 / False: 순차 선택
+  random_config_seed     random_config_selection 재현용 seed
+
+  [Action noise]
+  add_action_noise       True: rel_action에 가우시안 노이즈 추가 (PASS 1)
+  action_noise_period    N step마다 노이즈 추가 (1=매 step)
+  noise_scale            노이즈 크기 (pos_std(m) / rot_std(°) 공통값)
+  replay_action_type     'rel' (relative 7D) / 'abs' (absolute 7D)
+
+  [Block color diversification — 블록 색상 다양화]
+  diversify_block_colors  True: 매 ridx마다 red/blue/pink 블록을 랜덤 색상으로 교체
+                            사전 준비: calvin_color_customizer.py --diversify_blocks
+  num_block_colors        사용 가능 색상 수 (고정값=11, URDF 인덱스 0~10)
+  block_color_seed        재현용 seed
+  same_block_colors_for_clean
+    True  → noisy/clean env 동일 블록 색 (3색 사용)
+    False → noisy/clean env 서로 다른 블록 색 (6색 사용, 겹침 없음)
+
+  [Gaussian blur augmentation]
+  add_random_gaussian_blur  True: 랜덤 위치/모양/크기의 blur 패치를 이미지에 적용
+  blur_random_seed          재현용 seed (frame index와 조합)
+  blur_num_patches_min/max  한 이미지당 blur 패치 수 범위
+  blur_kernel_candidates    GaussianBlur 커널 크기 후보 (홀수 권장)
+  blur_size_ratio_min/max   패치 크기 비율 범위 (이미지 너비/높이 대비)
+  blur_shape_candidates     패치 모양 후보 ('circle', 'ellipse', 'rectangle', 'triangle')
+  apply_blur_to_static      True: static 카메라 이미지에 blur 적용
+  apply_blur_to_gripper     True: gripper 카메라 이미지에 blur 적용
+
+================================================================================
+출력 파일 구조  (processed_output_save_dir/{split}/ 아래)
+================================================================================
+
+  episode_{ridx:04d}_{i:07d}_noisy_action_image_added.npz
+    ├── rgb_static         clean image  (PASS 2 렌더링, modify_clean_image=True일 때)
+    ├── rgb_gripper        clean gripper image
+    ├── rgb_static_noisy   noisy image  (PASS 1 렌더링)
+    ├── rgb_gripper_noisy  noisy gripper image
+    ├── actions            원본 absolute action
+    ├── rel_actions        원본 relative action
+    ├── robot_obs          원본 robot observation
+    └── scene_obs          원본 scene observation
+
+  lang_annotations/
+    ├── auto_lang_ann_modified.npy       clean env 기준 색상 치환 annotation
+    ├── auto_lang_ann_noisy_modified.npy noisy env 기준 색상 치환 annotation
+    └── block_color_map_log.json         ridx별 {clean/noisy}_color_map, {original/clean/noisy}_ann 기록
+
+  replay_frames_lang_ranges_[...]/      save_log=True일 때 프레임 PNG + distance plot
+
+================================================================================
+일반적인 사용 순서
+================================================================================
+
+  # 1. 블록 URDF 색상 다양화 (최초 1회)
+  python calvin_color_customizer.py --diversify_blocks
+
+  # 2. 테이블 텍스처 다양화 (OOD 사용 시, 최초 1회)
+  python calvin_color_customizer.py --target A --num_colors 20
+  python calvin_color_customizer.py --target B --num_colors 20
+  python calvin_color_customizer.py --target C --num_colors 20
+  python calvin_color_customizer.py --target D --num_colors 20
+
+  # 3. 데이터셋 replay (action_from='dataset' 설정 후)
+  export ORIGINAL_CALVIN_ABCD_D_DIR=/path/to/task_ABCD_D
+  export ORIGINAL_CALVIN_ABCD_D_NOISE_DIR=/path/to/output
+  python my_replayer.py
+
+  # 4. annotation만 재생성 (env 실행 없이, action_from='fix_annotations' 설정 후)
+  python my_replayer.py
 """
 
 from copy import deepcopy
@@ -423,8 +501,9 @@ def run_env():
         # 블록 색상 다양화: annotation을 deepcopy하여 색상 치환 결과를 별도로 관리
         if diversify_block_colors:
             from copy import deepcopy as _dc
-            ann_modified = _dc(ann)
-            color_map_log = []  # [(ridx, start, end, task_name, color_map, original_ann, modified_ann), ...]
+            ann_modified = _dc(ann)          # clean env 기준 색상 치환 annotation
+            ann_noisy_modified = _dc(ann)    # noisy env 기준 색상 치환 annotation
+            color_map_log = []  # list of dicts: {ridx, start, end, task_name, clean_color_map, noisy_color_map, original_ann, clean_ann, noisy_ann}
 
         tasks = hydra.utils.instantiate(cfg.tasks)
         prev_info = None
@@ -502,11 +581,12 @@ def run_env():
                     all_indices = block_color_rng.choice(num_block_colors, size=6, replace=False)
                     noisy_indices = all_indices[:3]   # env (noisy) 용
                     clean_indices = all_indices[3:]    # env_no_noise (clean) 용
-                    randomize_block_colors_in_cfg(selected_cfg, block_color_rng, num_block_colors, indices=noisy_indices)
+                    noisy_color_map = randomize_block_colors_in_cfg(selected_cfg, block_color_rng, num_block_colors, indices=noisy_indices)
                     color_map = randomize_block_colors_in_cfg(selected_cfg_no_noise, block_color_rng, num_block_colors, indices=clean_indices)
                 else:
                     # [같은 색 모드] 3색만 뽑아서 env에 적용
                     color_map = randomize_block_colors_in_cfg(selected_cfg, block_color_rng, num_block_colors)
+                    noisy_color_map = color_map  # noisy/clean 색상 동일
                     if add_action_noise and modify_clean_image:
                         # env_no_noise에도 동일한 URDF 파일 경로를 복사 → 같은 블록 색
                         movable_no_noise = selected_cfg_no_noise.scene.objects.movable_objects
@@ -521,11 +601,24 @@ def run_env():
                 task_name = task_names[ridx]
                 if any(c in task_name for c in ["red", "blue", "pink"]):
                     orig_ann, new_ann = modify_lang_annotations(ann_modified, ridx, color_map)
-                    color_map_log.append((ridx, start, end, task_name, color_map.copy(), orig_ann, new_ann))
+                    _, noisy_ann = modify_lang_annotations(ann_noisy_modified, ridx, noisy_color_map)
+                    color_map_log.append({
+                        "ridx": ridx, "start": start, "end": end, "task_name": task_name,
+                        "clean_color_map": color_map.copy(),
+                        "noisy_color_map": noisy_color_map.copy(),
+                        "original_ann": orig_ann,
+                        "clean_ann": new_ann,
+                        "noisy_ann": noisy_ann,
+                    })
                     if verbose:
-                        print(f"  [lang] ridx={ridx} task={task_name}: '{orig_ann}' -> '{new_ann}'")
+                        print(f"  [lang] ridx={ridx} task={task_name}: '{orig_ann}' -> clean='{new_ann}' noisy='{noisy_ann}'")
                 else:
-                    color_map_log.append((ridx, start, end, task_name, color_map.copy(), None, None))
+                    color_map_log.append({
+                        "ridx": ridx, "start": start, "end": end, "task_name": task_name,
+                        "clean_color_map": color_map.copy(),
+                        "noisy_color_map": noisy_color_map.copy(),
+                        "original_ann": None, "clean_ann": None, "noisy_ann": None,
+                    })
         
         # ============ PASS 1: noisy env ============
         # noisy action을 실행하여 noisy image를 렌더링하는 단계
@@ -836,10 +929,11 @@ def run_env():
             gc.collect()
 
         # ============ npz 저장 ============
-        # 각 에피소드별로 episode_{i}_noisy_action_image_added.npz 생성
+        # 각 에피소드별로 episode_{ridx:04d}_{i:07d}_noisy_action_image_added.npz 생성
+        # ridx prefix로 overlapping episode range 간 덮어쓰기 방지
         # 포함 데이터: 원본(clean) 이미지, noisy 이미지, action, observation
         for i in sorted(pending_outputs.keys()):
-            out_file = Path(processed_output_save_dir) / f"episode_{i:07d}_noisy_action_image_added.npz"
+            out_file = Path(processed_output_save_dir) / f"episode_{ridx:04d}_{i:07d}_noisy_action_image_added.npz"
             np.savez_compressed(out_file, **pending_outputs[i])
 
         del pending_outputs
@@ -973,20 +1067,41 @@ def run_env():
 
         ann_out_path = out_dir / "auto_lang_ann_modified.npy"
         np.save(ann_out_path, ann_out)
-        print(f"[saved] modified annotations ({n_processed}/{len(indx_ranges)}) -> {ann_out_path}")
+        print(f"[saved] clean annotations ({n_processed}/{len(indx_ranges)}) -> {ann_out_path}")
+
+        # ----- noisy annotation 저장 (noisy env 블록 색상 기준) -----
+        ann_noisy_out = {
+            "language": {
+                "ann": ann_noisy_modified["language"]["ann"][:n_processed],
+                "task": ann_noisy_modified["language"]["task"][:n_processed],
+            },
+            "info": {
+                "indx": ann_noisy_modified["info"]["indx"][:n_processed],
+                "episodes": ann_noisy_modified["info"]["episodes"][:n_processed]
+                            if "episodes" in ann_noisy_modified["info"] else [],
+            },
+        }
+        if "emb" in ann_noisy_modified["language"]:
+            ann_noisy_out["language"]["emb"] = ann_noisy_modified["language"]["emb"][:n_processed]
+
+        ann_noisy_out_path = out_dir / "auto_lang_ann_noisy_modified.npy"
+        np.save(ann_noisy_out_path, ann_noisy_out)
+        print(f"[saved] noisy annotations ({n_processed}/{len(indx_ranges)}) -> {ann_noisy_out_path}")
 
         # color mapping log 저장
         log_out_path = out_dir / "block_color_map_log.json"
         log_data = []
-        for (ridx_val, start_val, end_val, task_name, cmap, orig_ann, new_ann) in color_map_log:
+        for entry in color_map_log:
             log_data.append({
-                "ridx": int(ridx_val),
-                "start": int(start_val),
-                "end": int(end_val),
-                "task_name": task_name,
-                "color_map": cmap,
-                "original_ann": orig_ann,
-                "modified_ann": new_ann,
+                "ridx": int(entry["ridx"]),
+                "start": int(entry["start"]),
+                "end": int(entry["end"]),
+                "task_name": entry["task_name"],
+                "clean_color_map": entry["clean_color_map"],
+                "noisy_color_map": entry["noisy_color_map"],
+                "original_ann": entry["original_ann"],
+                "clean_ann": entry["clean_ann"],
+                "noisy_ann": entry["noisy_ann"],
             })
         with open(log_out_path, "w", encoding="utf-8") as f:
             _json.dump(log_data, f, indent=2, ensure_ascii=False)
@@ -1039,6 +1154,7 @@ def fix_annotations_only():
 
     from copy import deepcopy as _dc
     ann_modified = _dc(ann)
+    ann_noisy_modified = _dc(ann)
     color_map_log = []
 
     # =========================================================================
@@ -1064,14 +1180,18 @@ def fix_annotations_only():
 
         # ----- block color RNG 소비 (run_env와 동일 패턴 유지) -----
         if add_action_noise and modify_clean_image and not same_block_colors_for_clean:
-            # [다른 색 모드] 6색 뽑기 → clean(후반 3개)을 color_map으로 사용
+            # [다른 색 모드] 6색 뽑기 → noisy(앞 3개), clean(뒤 3개)
             all_indices = block_color_rng.choice(num_block_colors, size=6, replace=False)
+            noisy_indices = all_indices[:3]
             clean_indices = all_indices[3:]
             # clean env 기준 color_map 생성 (cfg 수정은 불필요 — annotation만 변경)
             color_map = {}
+            noisy_color_map = {}
             orig_colors = ["red", "blue", "pink"]
             for orig_color, color_idx in zip(orig_colors, clean_indices):
                 color_map[orig_color] = BASIC_CALLABLE_COLOR_LIST[int(color_idx)]
+            for orig_color, color_idx in zip(orig_colors, noisy_indices):
+                noisy_color_map[orig_color] = BASIC_CALLABLE_COLOR_LIST[int(color_idx)]
         else:
             # [같은 색 모드 또는 PASS 2 없음] 3색 뽑기
             indices = block_color_rng.choice(num_block_colors, size=3, replace=False)
@@ -1079,16 +1199,30 @@ def fix_annotations_only():
             orig_colors = ["red", "blue", "pink"]
             for orig_color, color_idx in zip(orig_colors, indices):
                 color_map[orig_color] = BASIC_CALLABLE_COLOR_LIST[int(color_idx)]
+            noisy_color_map = color_map  # 같은 색
 
         # ----- language annotation 치환 -----
         task_name = task_names[ridx]
         if any(c in task_name for c in ["red", "blue", "pink"]):
             orig_ann, new_ann = modify_lang_annotations(ann_modified, ridx, color_map)
-            color_map_log.append((ridx, start, end, task_name, color_map.copy(), orig_ann, new_ann))
+            _, noisy_ann = modify_lang_annotations(ann_noisy_modified, ridx, noisy_color_map)
+            color_map_log.append({
+                "ridx": ridx, "start": start, "end": end, "task_name": task_name,
+                "clean_color_map": color_map.copy(),
+                "noisy_color_map": noisy_color_map.copy(),
+                "original_ann": orig_ann,
+                "clean_ann": new_ann,
+                "noisy_ann": noisy_ann,
+            })
             if verbose:
-                print(f"  [lang] ridx={ridx} task={task_name}: '{orig_ann}' -> '{new_ann}'")
+                print(f"  [lang] ridx={ridx} task={task_name}: '{orig_ann}' -> clean='{new_ann}' noisy='{noisy_ann}'")
         else:
-            color_map_log.append((ridx, start, end, task_name, color_map.copy(), None, None))
+            color_map_log.append({
+                "ridx": ridx, "start": start, "end": end, "task_name": task_name,
+                "clean_color_map": color_map.copy(),
+                "noisy_color_map": noisy_color_map.copy(),
+                "original_ann": None, "clean_ann": None, "noisy_ann": None,
+            })
 
         if ridx % 500 == 0:
             print(f"  processed ridx={ridx}/{min(processing_limit, len(indx_ranges))}")
@@ -1119,19 +1253,40 @@ def fix_annotations_only():
 
     ann_out_path = out_dir / "auto_lang_ann_modified.npy"
     np.save(ann_out_path, ann_out)
-    print(f"[saved] modified annotations ({n_processed}/{len(indx_ranges)}) -> {ann_out_path}")
+    print(f"[saved] clean annotations ({n_processed}/{len(indx_ranges)}) -> {ann_out_path}")
+
+    # ----- noisy annotation 저장 -----
+    ann_noisy_out = {
+        "language": {
+            "ann": ann_noisy_modified["language"]["ann"][:n_processed],
+            "task": ann_noisy_modified["language"]["task"][:n_processed],
+        },
+        "info": {
+            "indx": ann_noisy_modified["info"]["indx"][:n_processed],
+            "episodes": ann_noisy_modified["info"]["episodes"][:n_processed]
+                        if "episodes" in ann_noisy_modified["info"] else [],
+        },
+    }
+    if "emb" in ann_noisy_modified["language"]:
+        ann_noisy_out["language"]["emb"] = ann_noisy_modified["language"]["emb"][:n_processed]
+
+    ann_noisy_out_path = out_dir / "auto_lang_ann_noisy_modified.npy"
+    np.save(ann_noisy_out_path, ann_noisy_out)
+    print(f"[saved] noisy annotations ({n_processed}/{len(indx_ranges)}) -> {ann_noisy_out_path}")
 
     log_out_path = out_dir / "block_color_map_log.json"
     log_data = []
-    for (ridx_val, start_val, end_val, task_name, cmap, orig_ann, new_ann) in color_map_log:
+    for entry in color_map_log:
         log_data.append({
-            "ridx": int(ridx_val),
-            "start": int(start_val),
-            "end": int(end_val),
-            "task_name": task_name,
-            "color_map": cmap,
-            "original_ann": orig_ann,
-            "modified_ann": new_ann,
+            "ridx": int(entry["ridx"]),
+            "start": int(entry["start"]),
+            "end": int(entry["end"]),
+            "task_name": entry["task_name"],
+            "clean_color_map": entry["clean_color_map"],
+            "noisy_color_map": entry["noisy_color_map"],
+            "original_ann": entry["original_ann"],
+            "clean_ann": entry["clean_ann"],
+            "noisy_ann": entry["noisy_ann"],
         })
     with open(log_out_path, "w", encoding="utf-8") as f:
         _json.dump(log_data, f, indent=2, ensure_ascii=False)
