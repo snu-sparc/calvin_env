@@ -14,6 +14,16 @@ data/calvin_table_D_*
 data/blocks/block_blue_*
 data/blocks/block_pink_*
 data/blocks/block_red_*
+# keep ood_env / ood_obj / ood_env_obj variants tracked
+!conf/config_data_collection_ood_env.yaml
+!conf/config_data_collection_ood_obj.yaml
+!conf/config_data_collection_ood_env_obj.yaml
+!conf/scene/calvin_scene_*_ood_env.yaml
+!conf/scene/calvin_scene_*_ood_obj.yaml
+!conf/scene/calvin_scene_*_ood_env_obj.yaml
+!data/calvin_table_*/urdf/calvin_table_*_ood_env.urdf
+!data/calvin_table_*/urdf/calvin_table_*_ood_obj.urdf
+!data/calvin_table_*/urdf/calvin_table_*_ood_env_obj.urdf
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
