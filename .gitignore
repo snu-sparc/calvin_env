@@ -24,9 +24,9 @@ data/blocks/block_red_*
 !data/calvin_table_*/urdf/calvin_table_*_ood_env.urdf
 !data/calvin_table_*/urdf/calvin_table_*_ood_obj.urdf
 !data/calvin_table_*/urdf/calvin_table_*_ood_env_obj.urdf
-!data/blocks/block_red_middle_3.urdf
-!data/blocks/block_blue_small_4.urdf
-!data/blocks/block_pink_big_9.urdf
+!data/blocks/block_red_middle_8.urdf
+!data/blocks/block_blue_small_9.urdf
+!data/blocks/block_pink_big_10.urdf
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

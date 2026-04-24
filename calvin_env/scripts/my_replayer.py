@@ -183,8 +183,8 @@ noise_scale = 5                        # 노이즈 크기. pos_std(m) / rot_std(
 # Block color diversification — 블록 색상 다양화
 diversify_block_colors = True          # True: 매 시퀀스마다 red/blue/pink 블록의 색상을 랜덤 변경
                                         #   사전 준비 필요: calvin_color_customizer.py --diversify_blocks
-num_block_colors = 11                   # 사용 가능한 색상 수 (= len(BASIC_CALLABLE_COLOR_LIST))
-                                        #   변경하지 말 것 — URDF 파일이 0~10 인덱스로 생성되어 있음
+num_block_colors = 8                   # 사용 가능한 색상 수 (= len(BASIC_CALLABLE_COLOR_LIST))
+                                        #   변경하지 말 것 — URDF 파일이 0~10 인덱스로 생성되어 있음 -> 8로 변경 시 obj ood를 위해 block 색깔에 orange, purple, gray를 데이터셋 생성시에 사용하지 않음.
 block_color_seed = 9999                 # 블록 색상 랜덤 선택의 재현성을 위한 seed
 same_block_colors_for_clean = False      # True: env(noisy)와 env_no_noise(clean)가 동일한 블록 색 사용
                                         #   → 11색 중 3색만 사용
@@ -311,18 +311,18 @@ def get_scene_for_episode(episode_idx, scene_info):
 
 # =============================================================================
 # Constants — 블록 색상 다양화에 사용되는 11가지 색상 목록
-# 인덱스가 URDF 파일 접미사로 사용됨 (예: block_red_middle_7.urdf → orange)
+# 인덱스가 URDF 파일 접미사로 사용됨 (예: block_red_middle_8.urdf → orange)
 # =============================================================================
 BASIC_CALLABLE_COLOR_LIST = [
-    "black",   # 0
-    "white",   # 1
-    "red",     # 2  (원본 block_red의 색)
-    "green",   # 3
-    "yellow",  # 4
-    "blue",    # 5  (원본 block_blue의 색)
-    "brown",   # 6
-    "orange",  # 7
-    "pink",    # 8  (원본 block_pink의 색)
+    "red",     # 0  (원본 block_red의 색)
+    "blue",    # 1  (원본 block_blue의 색)
+    "pink",    # 2  (원본 block_pink의 색)
+    "black",   # 3
+    "white",   # 4
+    "green",   # 5
+    "yellow",  # 6
+    "brown",   # 7
+    "orange",  # 8
     "purple",  # 9
     "gray",    # 10
 ]
@@ -335,9 +335,9 @@ def randomize_block_colors_in_cfg(cfg, rng, num_block_colors, indices=None):
     겹치지 않는 색상을 선택하여 해당 인덱스의 URDF 파일로 교체한다.
 
     예시 흐름:
-      1. indices = [7, 3, 9] 가 선택 (orange, green, purple)
-      2. block_red → blocks/block_red_middle_7.urdf (orange URDF)
-         block_blue → blocks/block_blue_middle_3.urdf (green URDF)
+      1. indices = [8, 5, 9] 가 선택 (orange, green, purple)
+      2. block_red → blocks/block_red_middle_8.urdf (orange URDF)
+         block_blue → blocks/block_blue_middle_5.urdf (green URDF)
          block_pink → blocks/block_pink_middle_9.urdf (purple URDF)
       3. color_map = {"red": "orange", "blue": "green", "pink": "purple"}
 
@@ -372,7 +372,7 @@ def randomize_block_colors_in_cfg(cfg, rng, num_block_colors, indices=None):
             if verbose:
                 print(f"  [block] {block_key}: keep original {original_file} ({orig_color} == {new_color_name})")
         else:
-            # URDF 파일명에 색상 인덱스 추가: block_red_middle.urdf → block_red_middle_7.urdf
+            # URDF 파일명에 색상 인덱스 추가: block_red_middle.urdf → block_red_middle_8.urdf
             base, ext = os.path.splitext(original_file)
             new_file = f"{base}_{color_idx}{ext}"
             movable[block_key].file = new_file

@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
-<!-- color: white -->
-<robot name="block_blue">
+<!-- color: gray -->
+<robot name="block_pink">
   <link name="base_link">
     <contact>
       <lateral_friction value="0.7"/>
@@ -14,16 +14,16 @@
     <visual>
       <origin rpy="0 0 0" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <box size="0.05 0.05 0.05"/>
+        <box size="0.1 0.05 0.05"/>
       </geometry>
-      <material name="white">
-        <color rgba="1.0 1.0 1.0 1.0"/>
+      <material name="gray">
+        <color rgba="0.5 0.5 0.5 1.0"/>
       </material>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <box size="0.05 0.05 0.05"/>
+        <box size="0.1 0.05 0.05"/>
       </geometry>
     </collision>
   </link>

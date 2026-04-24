@@ -38,18 +38,18 @@ objects:
           color: [0, 1, 0, 1] # green
   movable_objects:
     # OOD env + OOD object colors:
-    #   block_red  -> green  (index 3)
-    #   block_blue -> yellow (index 4)
-    #   block_pink -> purple (index 9)
+    #   block_red  -> orange (index 8)
+    #   block_blue -> purple (index 9)
+    #   block_pink -> gray   (index 10)
     block_red:
-      file: blocks/block_red_middle_3.urdf
+      file: blocks/block_red_middle_8.urdf
       initial_pos: any
       initial_orn: any
     block_blue:
-      file: blocks/block_blue_small_4.urdf
+      file: blocks/block_blue_small_9.urdf
       initial_pos: any
       initial_orn: any
     block_pink:
-      file: blocks/block_pink_big_9.urdf
+      file: blocks/block_pink_big_10.urdf
       initial_pos: any
       initial_orn: any
