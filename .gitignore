@@ -27,6 +27,10 @@ data/blocks/block_red_*
 !data/blocks/block_red_middle_8.urdf
 !data/blocks/block_blue_small_9.urdf
 !data/blocks/block_pink_big_10.urdf
+# red-only OOD obj recolors (green/yellow/brown)
+!data/blocks/block_red_middle_5.urdf
+!data/blocks/block_red_middle_6.urdf
+!data/blocks/block_red_middle_7.urdf
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
